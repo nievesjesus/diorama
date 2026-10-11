@@ -132,6 +132,15 @@ function world_query() {
 
 const world_textureCache = new Map();
 
+// GPU memory is not reclaimed by dropping references: every canvas texture
+// stays resident until it is told to go. Teardown walks the cache once.
+world_textureCache.dispose = function world_textureCacheDispose() {
+  for (const texture of world_textureCache.values()) {
+    if (texture && typeof texture.dispose === 'function') texture.dispose();
+  }
+  world_textureCache.clear();
+};
+
 function world_canvas(size = WORLD_TEX) {
   return world_canvasOf(size, size);
 }
@@ -2480,6 +2489,37 @@ function world_labelClamp(distance, tan, reach, fp) {
   return { scale: clamped / raw, opacity };
 }
 
+// ----------------------------------------------------------------- fallback
+
+// The name a screen reader (or a fallback screenshot) hears for the picture:
+// the scene's own words, subtitle included only when the scene gave one.
+function world_sceneLabel(scene) {
+  const title = String(scene && scene.title != null ? scene.title : '').trim();
+  const subtitle = String(scene && scene.subtitle != null ? scene.subtitle : '').trim();
+  return subtitle ? `${title} — ${subtitle}` : title;
+}
+
+// Machines without WebGL — and frames whose context the driver revoked — get
+// the static SVG the SVG page uses, cloned out of the template build.mjs
+// inlined. A world page then degrades to a readable picture, never a blank
+// canvas. Returns false when no template was inlined, so the caller can tell
+// "fallback shown" from "nothing to show".
+function world_showFallback(host) {
+  if (!host) return false;
+  const template = document.getElementById('world-fallback');
+  if (!template) return false;
+  if (!host.querySelector('.world-fallback')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'world-fallback';
+    wrap.appendChild(template.content.cloneNode(true));
+    host.appendChild(wrap);
+  }
+  const canvas = host.querySelector('canvas');
+  if (canvas) canvas.remove();
+  document.documentElement.setAttribute('data-world-ready', 'fallback');
+  return true;
+}
+
 // ------------------------------------------------------------------- mount
 
 export function world_mount(options = {}) {
@@ -2492,16 +2532,34 @@ export function world_mount(options = {}) {
   const dark = model.theme === 'dark';
   const frozen = query.frozen !== null;
 
-  const renderer = new WebGLRenderer({
-    antialias: true,
-    alpha: false,
-    powerPreference: 'high-performance',
-    // A frozen frame is rendered once and never again, so the drawing buffer
-    // has to survive until the screenshot tool reads it back.
-    preserveDrawingBuffer: frozen,
-  });
+  // Reduced motion renders one still frame instead of an animation loop; a
+  // small viewport or a data-saver client spends less on pixels and skips the
+  // bloom pass. The desktop look is untouched.
+  const nav = typeof navigator === 'undefined' ? null : navigator;
+  const saveData = !!(nav && nav.connection && nav.connection.saveData);
+  const small = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity) < 700;
+  const reduceMotion = !!(window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const lite = saveData || small;
+
+  // No WebGL is a normal machine, not a crash: catch the constructor's throw
+  // and show the inlined SVG instead of leaving an empty canvas.
+  let renderer;
+  try {
+    renderer = new WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance',
+      // A frozen frame is rendered once and never again, so the drawing buffer
+      // has to survive until the screenshot tool reads it back.
+      preserveDrawingBuffer: frozen,
+    });
+  } catch (error) {
+    world_showFallback(host);
+    return null;
+  }
   renderer.info.autoReset = false;
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(lite ? 1.5 : 2, window.devicePixelRatio || 1));
   renderer.setSize(host.clientWidth || window.innerWidth, host.clientHeight || window.innerHeight);
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -2510,6 +2568,10 @@ export function world_mount(options = {}) {
   renderer.shadowMap.type = PCFSoftShadowMap;
   host.appendChild(renderer.domElement);
   renderer.domElement.classList.add('world-canvas');
+  // The canvas is a picture, so announce it as one.
+  renderer.domElement.setAttribute('role', 'img');
+  const canvasLabel = world_sceneLabel(scene);
+  if (canvasLabel) renderer.domElement.setAttribute('aria-label', canvasLabel);
 
   const stage = new Scene();
   stage.background = world_skyTexture(model.theme);
@@ -2529,6 +2591,12 @@ export function world_mount(options = {}) {
   const cylinderMaterial = world_cylinderMaterials(model.theme);
   const glowTexture = world_radialTexture(1, 0, 2.2);
   const lights = world_lighting(stage, model);
+  if (lite) {
+    // Cheaper and softer on small or data-saving clients. Set before the first
+    // render, while there is no shadow map to rebuild.
+    lights.key.shadow.mapSize.set(1024, 1024);
+    lights.key.shadow.radius = 5.2;
+  }
   world_buildSlab(root, model, material);
   // The place, before the machines: its paint lies on the deck and its
   // furniture has already been planned around the parts.
@@ -2550,13 +2618,15 @@ export function world_mount(options = {}) {
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(stage, camera));
-  const bloom = new UnrealBloomPass(
-    new Vector2(host.clientWidth || 1, host.clientHeight || 1),
-    dark ? 0.38 : 0.16,
-    0.68,
-    dark ? 0.85 : 0.92,
-  );
-  composer.addPass(bloom);
+  if (!lite) {
+    const bloom = new UnrealBloomPass(
+      new Vector2(host.clientWidth || 1, host.clientHeight || 1),
+      dark ? 0.38 : 0.16,
+      0.68,
+      dark ? 0.85 : 0.92,
+    );
+    composer.addPass(bloom);
+  }
   composer.addPass(new OutputPass());
 
   const hud = world_hud(model, model.stats, query.debug);
@@ -2876,9 +2946,37 @@ export function world_mount(options = {}) {
   const api = { renderer, composer, stage, camera, controls, model, state, overlays, flows };
   if (typeof window !== 'undefined') window.diorama = api;
 
-  if (frozen) {
-    // Frozen capture: one deterministic update, one render, no rAF loop.
-    stepFlows(query.frozen);
+  // Stop the loop and give GPU resources back: render targets, the renderer and
+  // every cached texture. Safe to call more than once, and called on context
+  // loss so a revoked context does not leak.
+  let frameHandle = 0;
+  let running = false;
+  const stop = () => {
+    running = false;
+    if (frameHandle) cancelAnimationFrame(frameHandle);
+    frameHandle = 0;
+  };
+  const dispose = () => {
+    stop();
+    if (typeof composer.dispose === 'function') composer.dispose();
+    renderer.dispose();
+    world_textureCache.dispose();
+  };
+  api.stop = stop;
+  api.dispose = dispose;
+
+  renderer.domElement.addEventListener('webglcontextlost', (event) => {
+    // Without preventDefault the context never comes back; either way the
+    // picture is gone, so stop, release and drop the SVG in.
+    event.preventDefault();
+    dispose();
+    world_showFallback(host);
+  }, false);
+
+  // One deterministic update and render — the frozen `?t=` frame, reused for
+  // prefers-reduced-motion.
+  const renderStatic = (at) => {
+    stepFlows(at);
     if (state.mode === 'fp') stepFirstPerson(0);
     stepLabels();
     renderer.info.reset();
@@ -2886,6 +2984,11 @@ export function world_mount(options = {}) {
     api.drawCalls = renderer.info.render.calls;
     api.triangles = renderer.info.render.triangles;
     api.textures = world_textureCache.size;
+  };
+
+  if (frozen) {
+    // Frozen capture: one deterministic update, one render, no rAF loop.
+    renderStatic(query.frozen);
     document.documentElement.setAttribute('data-world-ready', 'static');
     if (hud && hud.badge) {
       hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${model.stats.env} · ${api.drawCalls} draw calls · ${world_textureCache.size} textures · net ${model.stats.network} ${model.stats.segments}seg`;
@@ -2897,19 +3000,37 @@ export function world_mount(options = {}) {
     // identical frozen frame a few more times and then stop — state never
     // advances, so the capture stays deterministic, and a bounded loop keeps
     // Chrome's virtual-time budget from burning on software rasterisation.
+    running = true;
     let repaints = WORLD_FREEZE_REPAINTS;
     const repaint = () => {
+      if (!running) return;
       composer.render();
       repaints -= 1;
-      if (repaints > 0) requestAnimationFrame(repaint);
+      if (repaints > 0) frameHandle = requestAnimationFrame(repaint);
       else document.documentElement.setAttribute('data-world-ready', 'painted');
     };
-    requestAnimationFrame(repaint);
+    frameHandle = requestAnimationFrame(repaint);
+    return api;
+  }
+
+  if (reduceMotion) {
+    // One still frame, no animation loop and no travelling pulses. An orbit or
+    // zoom re-renders it on demand, so the controls stay usable without
+    // autoplay motion.
+    renderStatic(0);
+    document.documentElement.setAttribute('data-world-ready', 'static');
+    if (hud && hud.badge) {
+      hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${api.drawCalls} draw calls · ${world_textureCache.size} textures`;
+    }
+    controls.addEventListener('change', () => renderStatic(0));
     return api;
   }
 
   let last = performance.now();
+  let live = false;
+  running = true;
   const loop = (now) => {
+    if (!running) return;
     const delta = world_clamp((now - last) / 1000, 0, 0.1);
     last = now;
     stepFly(now);
@@ -2921,10 +3042,14 @@ export function world_mount(options = {}) {
     renderer.info.reset();
     composer.render();
     api.drawCalls = renderer.info.render.calls;
-    requestAnimationFrame(loop);
+    if (!live) {
+      // Only claim the live state once a frame has actually reached the screen.
+      live = true;
+      document.documentElement.setAttribute('data-world-ready', 'live');
+    }
+    frameHandle = requestAnimationFrame(loop);
   };
-  requestAnimationFrame(loop);
-  document.documentElement.setAttribute('data-world-ready', 'live');
+  frameHandle = requestAnimationFrame(loop);
   return api;
 }
 

@@ -17,6 +17,13 @@ body.world-page .stage:active {
   outline: none;
 }
 
+/* Shown only when WebGL is unavailable or its context was lost: the static SVG
+   the SVG page uses, filling the same frame the canvas would have. */
+.world-fallback {
+  position: absolute;
+  inset: 0;
+}
+
 .world-stats {
   align-self: flex-start;
   margin-top: 2px;

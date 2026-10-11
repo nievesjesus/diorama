@@ -241,10 +241,31 @@ export function escapeJsonScript(value) {
     char === '\u2028' ? '\\u2028' : '\\u2029');
 }
 
-export function renderWorldHtml({ scene, css, runtime }) {
+/** The name the picture answers to: scene title, subtitle only when present. */
+export function worldSceneLabel(scene) {
+  const title = String((scene && scene.title) ?? '').trim();
+  const subtitle = String((scene && scene.subtitle) ?? '').trim();
+  return subtitle ? `${title} — ${subtitle}` : title;
+}
+
+/**
+ * The hidden fallback the world runtime clones into .stage when WebGL is
+ * missing: the same static SVG the SVG page renders, tagged so a screen reader
+ * announces it as a picture. Empty when the build produced no SVG.
+ */
+export function worldFallbackTemplate(scene, svg) {
+  const markup = String(svg ?? '').trim();
+  if (!markup) return '';
+  const label = escapeAttribute(worldSceneLabel(scene) || 'diorama');
+  const tagged = markup.replace(/^<svg\b/, `<svg role="img" aria-label="${label}"`);
+  return `<template id="world-fallback">${tagged}</template>`;
+}
+
+export function renderWorldHtml({ scene, css, runtime, svg }) {
   const theme = scene.theme === 'dark' ? 'dark' : 'light';
   const title = escapeText(scene.title ?? '');
   const subtitle = escapeText(scene.subtitle ?? '');
+  const fallback = worldFallbackTemplate(scene, svg);
   return [
     '<!doctype html>',
     '<html lang="en">',
@@ -273,6 +294,7 @@ export function renderWorldHtml({ scene, css, runtime }) {
     '<span class="corner br"></span>',
     '</div>',
     '</div>',
+    ...(fallback ? [fallback] : []),
     `<script type="application/json" id="world-scene">${escapeJsonScript(scene)}</script>`,
     '<script type="module">',
     runtime,
@@ -388,6 +410,7 @@ export async function build(options, env = process.env) {
       : join(dirname(resolve(options.input)), 'world.html');
     const worldHtml = renderWorldHtml({
       scene,
+      svg,
       css: `${css}\n${readFileSync(join(worldDir, 'world.css'), 'utf8')}`,
       runtime: worldRuntime(worldDir),
     });

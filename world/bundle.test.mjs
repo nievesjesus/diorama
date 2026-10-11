@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { addonOrder, bundleWebgl, moduleOrder, stripModuleSyntax, stripThreeExports } from './bundle.mjs';
+import { build } from '../build.mjs';
 
 const worldDir = dirname(fileURLToPath(import.meta.url));
 const read = (relative) => readFileSync(join(worldDir, relative), 'utf8');
@@ -117,4 +119,21 @@ test('the vendored three.js is the pinned MIT release', () => {
   assert.equal(three.includes("const REVISION = '169'"), true);
   assert.equal(read('vendor/three/LICENSE').includes('The MIT License'), true);
   assert.equal(read('vendor/LICENSE-three.md').includes('three@0.169.0'), true);
+});
+
+test('a kit-fixture world page stays under budget, self-contained and has the fallback', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'diorama-world-budget-'));
+  const input = join(worldDir, '..', 'kit', 'fixtures', 'three-tier.json');
+  const out = join(dir, 'world.html');
+  const result = await build({ input, out: join(dir, 'index.html'), webgl: true, webglOut: out });
+  assert.equal(result.code, 0, result.message);
+  const html = readFileSync(out, 'utf8');
+  const bytes = statSync(out).size;
+  assert.ok(bytes < 2_600_000, `world page is ${bytes} bytes, budget is 2.6 MB`);
+  // Self-contained: nothing is fetched at runtime.
+  assert.equal(/<script[^>]*\ssrc=/.test(html), false, 'no external scripts');
+  assert.equal(/<link[^>]*rel=["']?stylesheet/.test(html), false, 'no external stylesheets');
+  // The static SVG fallback is inlined and announced as a picture.
+  assert.equal(html.includes('id="world-fallback"'), true, 'the fallback template is embedded');
+  assert.ok(/<svg role="img" aria-label="/.test(html), 'the fallback SVG is labelled');
 });
