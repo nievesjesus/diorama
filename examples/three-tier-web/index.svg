@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" class="diorama" viewBox="0 0 1280 960" width="1280" height="960" preserveAspectRatio="xMidYMid meet" data-fill="0.855" role="img" aria-label="Three-tier web app">
+<svg xmlns="http://www.w3.org/2000/svg" class="diorama" viewBox="0 0 1280 960" width="1280" height="960" preserveAspectRatio="xMidYMid meet" data-fill="0.855" role="img" aria-label="Three-tier web app" aria-describedby="diorama-desc">
 <title>Three-tier web app</title>
+<desc id="diorama-desc">Three-tier web app. nginx edge, two API replicas, Postgres and Redis behind a queue-fed worker. Parts: base, tier, client, nginx, api-1, api-2, worker, cron, grafana, objstore, vault, logs, monitoring, auth, mailer, postgres, search, redis, queue, spare-pallet, supply-crate. Links: nginx to api-1, nginx to api-2, api-1 to postgres, api-2 to postgres, api-1 to redis, api-2 to queue, queue to worker, worker to postgres, api-1 to auth, worker to objstore, nginx to client, logs to monitoring, vault to auth.</desc>
 <defs>
 <pattern id="iso-tex-brushedWarm-top" width="0.8" height="0.8" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
 <path d="M0 0.12H0.8 M0 0.38H0.8 M0 0.65H0.8" fill="none" stroke="#764d33" stroke-width="0.022"/>
@@ -1259,7 +1260,7 @@
 <ellipse cx="0" cy="2.5" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="0" cy="2.5" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="vault">
+<g class="part" data-id="vault" aria-label="vault">
 <polygon points="2.46,0.58 2.46,0.74 2.182,0.58 2.182,0.42" fill="url(#iso-g-plum-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="2.46,2.58 0.139,3.92 0.139,2.08 2.46,0.74" fill="url(#iso-g-plum-right)" stroke="#4d3852" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="2.46,2.58 0.139,3.92 0.139,2.08 2.46,0.74" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1295,7 +1296,7 @@
 <ellipse cx="3.897" cy="4.75" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="3.897" cy="4.75" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="auth">
+<g class="part" data-id="auth" aria-label="auth">
 <polygon points="6.357,2.83 6.357,2.99 6.079,2.83 6.079,2.67" fill="url(#iso-g-steel-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="6.357,4.83 4.036,6.17 4.036,4.33 6.357,2.99" fill="url(#iso-g-steel-right)" stroke="#566069" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="6.357,4.83 4.036,6.17 4.036,4.33 6.357,2.99" fill="url(#iso-tex-brush-right)" stroke="none" fill-opacity="0.025" class="face face-texture"/>
@@ -1330,7 +1331,7 @@
 <ellipse cx="-4.763" cy="5.25" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-4.763" cy="5.25" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="logs">
+<g class="part" data-id="logs" aria-label="logs">
 <polygon points="-2.304,3.33 -2.304,3.49 -2.581,3.33 -2.581,3.17" fill="url(#iso-g-copper-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="-2.304,5.33 -4.625,6.67 -4.625,4.83 -2.304,3.49" fill="url(#iso-g-copper-right)" stroke="#764d33" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="-2.304,5.33 -4.625,6.67 -4.625,4.83 -2.304,3.49" fill="url(#iso-tex-brushedWarm-right)" stroke="none" fill-opacity="0.025" class="face face-texture"/>
@@ -1374,7 +1375,7 @@
 <ellipse cx="8.66" cy="7.5" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="8.66" cy="7.5" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="mailer">
+<g class="part" data-id="mailer" aria-label="mailer">
 <polygon points="11.12,5.58 11.12,5.74 10.843,5.58 10.843,5.42" fill="url(#iso-g-brick-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="11.12,7.58 8.799,8.92 8.799,7.08 11.12,5.74" fill="url(#iso-g-brick-right)" stroke="#743a30" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="11.12,7.58 8.799,8.92 8.799,7.08 11.12,5.74" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1409,7 +1410,7 @@
 <ellipse cx="-9.526" cy="8" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-9.526" cy="8" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="monitoring">
+<g class="part" data-id="monitoring" aria-label="monitoring">
 <polygon points="-7.067,6.08 -7.067,6.24 -7.344,6.08 -7.344,5.92" fill="url(#iso-g-plum-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="-7.067,8.08 -9.388,9.42 -9.388,7.58 -7.067,6.24" fill="url(#iso-g-plum-right)" stroke="#4d3852" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="-7.067,8.08 -9.388,9.42 -9.388,7.58 -7.067,6.24" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1456,7 +1457,7 @@
 <ellipse cx="-1.299" cy="8.75" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-1.299" cy="8.75" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="api1">
+<g class="part" data-id="api1" aria-label="api-1">
 <polygon points="1.16,6.23 1.16,6.39 0.883,6.23 0.883,6.07" fill="url(#iso-g-blue-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="1.16,8.83 -1.16,10.17 -1.16,7.73 1.16,6.39" fill="url(#iso-g-blue-right)" stroke="#2d4d66" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="1.16,8.83 -1.16,10.17 -1.16,7.73 1.16,6.39" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1523,7 +1524,7 @@
 <ellipse cx="-13.856" cy="11" rx="2.979" ry="1.72" fill="url(#iso-shadow-contact)" fill-opacity="1.1"/>
 <ellipse cx="-13.856" cy="11" rx="3.984" ry="2.3" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="nginx">
+<g class="part" data-id="nginx" aria-label="nginx">
 <polygon points="-13.696,8.773 -9.999,10.907 -9.999,11.093 -13.696,13.227 -14.017,13.227 -17.714,11.093 -17.714,10.907 -14.017,8.773" fill="#46799f" stroke="none" fill-opacity="0.2" class="face glow"/>
 <polygon points="-10.531,8.88 -10.531,9.04 -10.808,8.88 -10.808,8.72" fill="url(#iso-g-blue-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="-10.531,11.08 -13.718,12.92 -13.718,10.88 -10.531,9.04" fill="url(#iso-g-blue-right)" stroke="#2d4d66" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
@@ -1578,7 +1579,7 @@
 <ellipse cx="-0.433" cy="13.75" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-0.433" cy="13.75" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="api2">
+<g class="part" data-id="api2" aria-label="api-2">
 <polygon points="2.026,11.23 2.026,11.39 1.749,11.23 1.749,11.07" fill="url(#iso-g-blue-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="2.026,13.83 -0.294,15.17 -0.294,12.73 2.026,11.39" fill="url(#iso-g-blue-right)" stroke="#2d4d66" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="2.026,13.83 -0.294,15.17 -0.294,12.73 2.026,11.39" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1637,7 +1638,7 @@
 <ellipse cx="12.124" cy="9.8" rx="1.896" ry="1.095" fill="url(#iso-shadow-contact)" fill-opacity="0.761"/>
 <ellipse cx="12.124" cy="9.8" rx="2.535" ry="1.464" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="postgres">
+<g class="part" data-id="postgres" aria-label="postgres">
 <polygon points="9.92,6.6 9.995,6.271 10.215,5.964 10.566,5.7 11.022,5.498 11.554,5.371 12.124,5.327 12.695,5.371 13.227,5.498 13.683,5.7 14.034,5.964 14.254,6.271 14.329,6.6 14.329,9.8 14.254,10.129 14.034,10.436 13.683,10.7 13.227,10.902 12.695,11.029 12.124,11.073 11.554,11.029 11.022,10.902 10.566,10.7 10.215,10.436 9.995,10.129 9.92,9.8" fill="url(#iso-g-amber-left)" stroke="none" class="face face-body"/>
 <polygon points="9.92,6.6 9.995,6.271 10.215,5.964 10.566,5.7 11.022,5.498 11.554,5.371 12.124,5.327 12.695,5.371 13.227,5.498 13.683,5.7 14.034,5.964 14.254,6.271 14.329,6.6 14.329,9.8 14.254,10.129 14.034,10.436 13.683,10.7 13.227,10.902 12.695,11.029 12.124,11.073 11.554,11.029 11.022,10.902 10.566,10.7 10.215,10.436 9.995,10.129 9.92,9.8" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
 <polygon points="13.683,10.7 13.227,10.902 13.227,7.702 13.683,7.5" fill="url(#iso-g-amber-right)" stroke="none" class="face face-right"/>
@@ -1694,7 +1695,7 @@
 <ellipse cx="-19.919" cy="14" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-19.919" cy="14" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="client">
+<g class="part" data-id="client" aria-label="client">
 <polygon points="-17.459,12.68 -17.459,12.84 -17.736,12.68 -17.736,12.52" fill="url(#iso-g-steel-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="-17.459,14.08 -19.78,15.42 -19.78,14.18 -17.459,12.84" fill="url(#iso-g-steel-right)" stroke="#566069" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="-17.459,14.08 -19.78,15.42 -19.78,14.18 -17.459,12.84" fill="url(#iso-tex-brush-right)" stroke="none" fill-opacity="0.025" class="face face-texture"/>
@@ -1724,7 +1725,7 @@
 <ellipse cx="18.836" cy="12.675" rx="2.793" ry="1.613" fill="url(#iso-shadow-contact)" fill-opacity="1.1"/>
 <ellipse cx="18.836" cy="12.675" rx="3.735" ry="2.156" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="search">
+<g class="part" data-id="search" aria-label="search">
 <polygon points="21.945,11.13 21.945,11.29 21.668,11.13 21.668,10.97" fill="url(#iso-g-plum-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="21.945,13.13 19.624,14.47 19.624,12.63 21.945,11.29" fill="url(#iso-g-plum-right)" stroke="#4d3852" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="21.945,13.13 19.624,14.47 19.624,12.63 21.945,11.29" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1810,7 +1811,7 @@
 <ellipse cx="-2.165" cy="18.75" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-2.165" cy="18.75" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="worker">
+<g class="part" data-id="worker" aria-label="worker">
 <polygon points="0.294,16.83 0.294,16.99 0.017,16.83 0.017,16.67" fill="url(#iso-g-green-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="0.294,18.83 -2.026,20.17 -2.026,18.33 0.294,16.99" fill="url(#iso-g-green-right)" stroke="#3d5843" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="0.294,18.83 -2.026,20.17 -2.026,18.33 0.294,16.99" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1854,7 +1855,7 @@
 <ellipse cx="14.03" cy="15.4" rx="1.58" ry="0.912" fill="url(#iso-shadow-contact)" fill-opacity="0.635"/>
 <ellipse cx="14.03" cy="15.4" rx="2.113" ry="1.22" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="redis">
+<g class="part" data-id="redis" aria-label="redis">
 <polygon points="12.192,13 12.255,12.725 12.439,12.47 12.731,12.25 13.111,12.081 13.554,11.975 14.03,11.939 14.505,11.975 14.948,12.081 15.329,12.25 15.621,12.47 15.804,12.725 15.867,13 15.867,15.4 15.804,15.675 15.621,15.93 15.329,16.15 14.948,16.319 14.505,16.425 14.03,16.461 13.554,16.425 13.111,16.319 12.731,16.15 12.439,15.93 12.255,15.675 12.192,15.4" fill="url(#iso-g-sand-left)" stroke="none" class="face face-body"/>
 <polygon points="12.192,13 12.255,12.725 12.439,12.47 12.731,12.25 13.111,12.081 13.554,11.975 14.03,11.939 14.505,11.975 14.948,12.081 15.329,12.25 15.621,12.47 15.804,12.725 15.867,13 15.867,15.4 15.804,15.675 15.621,15.93 15.329,16.15 14.948,16.319 14.505,16.425 14.03,16.461 13.554,16.425 13.111,16.319 12.731,16.15 12.439,15.93 12.255,15.675 12.192,15.4" fill="url(#iso-tex-brushedWarm-right)" stroke="none" fill-opacity="0.025" class="face face-texture"/>
 <polygon points="15.329,16.15 14.948,16.319 14.948,13.919 15.329,13.75" fill="url(#iso-g-sand-right)" stroke="none" class="face face-right"/>
@@ -1892,7 +1893,7 @@
 <path d="M 15.867 13.775 L 15.851 13.913 L 15.804 14.05 L 15.727 14.181 L 15.621 14.305 L 15.487 14.421 L 15.329 14.525 L 15.148 14.616 L 14.948 14.694 L 14.733 14.755 L 14.505 14.8 L 14.269 14.827 L 14.03 14.836 L 13.79 14.827 L 13.554 14.8 L 13.327 14.755 L 13.111 14.694 L 12.911 14.616 L 12.731 14.525 L 12.572 14.421 L 12.439 14.305 L 12.332 14.181 L 12.255 14.05 L 12.208 13.913 L 12.192 13.775" fill="none" stroke="#dfd3b8" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" stroke-opacity="0.7" class="face face-ring-lite"/>
 <path d="M 15.867 13.825 L 15.851 13.963 L 15.804 14.1 L 15.727 14.231 L 15.621 14.355 L 15.487 14.471 L 15.329 14.575 L 15.148 14.666 L 14.948 14.744 L 14.733 14.805 L 14.505 14.85 L 14.269 14.877 L 14.03 14.886 L 13.79 14.877 L 13.554 14.85 L 13.327 14.805 L 13.111 14.744 L 12.911 14.666 L 12.731 14.575 L 12.572 14.471 L 12.439 14.355 L 12.332 14.231 L 12.255 14.1 L 12.208 13.963 L 12.192 13.825" fill="none" stroke="#908366" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" stroke-opacity="0.7" class="face face-ring-dark"/>
 </g>
-<g class="part" data-id="queue">
+<g class="part" data-id="queue" aria-label="queue">
 <polygon points="12.419,17.63 12.419,17.79 12.142,17.63 12.142,17.47" fill="url(#iso-g-copper-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="12.419,18.63 10.531,19.72 10.531,18.88 12.419,17.79" fill="url(#iso-g-copper-right)" stroke="#764d33" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="12.419,18.63 10.531,19.72 10.531,18.88 12.419,17.79" fill="url(#iso-tex-brushedWarm-right)" stroke="none" fill-opacity="0.025" class="face face-texture"/>
@@ -1932,7 +1933,7 @@
 <ellipse cx="2.598" cy="21.5" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="2.598" cy="21.5" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="cron">
+<g class="part" data-id="cron" aria-label="cron">
 <polygon points="5.058,19.58 5.058,19.74 4.78,19.58 4.78,19.42" fill="url(#iso-g-green-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="5.058,21.58 2.737,22.92 2.737,21.08 5.058,19.74" fill="url(#iso-g-green-right)" stroke="#3d5843" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="5.058,21.58 2.737,22.92 2.737,21.08 5.058,19.74" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -1964,7 +1965,7 @@
 <ellipse cx="-6.928" cy="21.5" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="-6.928" cy="21.5" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="objstore">
+<g class="part" data-id="objstore" aria-label="objstore">
 <polygon points="-4.469,19.58 -4.469,19.74 -4.746,19.58 -4.746,19.42" fill="url(#iso-g-green-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="-4.469,21.58 -6.79,22.92 -6.79,21.08 -4.469,19.74" fill="url(#iso-g-green-right)" stroke="#3d5843" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="-4.469,21.58 -6.79,22.92 -6.79,21.08 -4.469,19.74" fill="url(#iso-tex-matte)" stroke="none" fill-opacity="0.04" class="face face-texture"/>
@@ -2005,7 +2006,7 @@
 <ellipse cx="7.361" cy="24.25" rx="2.234" ry="1.29" fill="url(#iso-shadow-contact)" fill-opacity="0.897"/>
 <ellipse cx="7.361" cy="24.25" rx="2.988" ry="1.725" fill="url(#iso-contact-grime)"/>
 </g>
-<g class="part" data-id="grafana">
+<g class="part" data-id="grafana" aria-label="grafana">
 <polygon points="9.821,22.33 9.821,22.49 9.544,22.33 9.544,22.17" fill="url(#iso-g-steel-rim)" stroke="none" class="face face-chamfer"/>
 <polygon points="9.821,24.33 7.5,25.67 7.5,23.83 9.821,22.49" fill="url(#iso-g-steel-right)" stroke="#566069" stroke-width="0.7" vector-effect="non-scaling-stroke" stroke-linejoin="round" class="face face-right"/>
 <polygon points="9.821,24.33 7.5,25.67 7.5,23.83 9.821,22.49" fill="url(#iso-tex-brush-right)" stroke="none" fill-opacity="0.025" class="face face-texture"/>
