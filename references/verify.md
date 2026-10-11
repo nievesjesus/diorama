@@ -18,6 +18,8 @@ node kit/audit.mjs <scene.json>
 It prints `OK` and exits 0, or one line per violation and exits 1. Exit 2 means the file could
 not be read or parsed. Iterate until zero violations.
 
+Warnings are advisory: they print to stderr (prefixed `WARNING:`) and the audit still exits 0.
+
 ### Codes and fixes
 
 **`LINK_OFF_ANCHOR`** — a link does not meet a part. Three causes: `from`/`to` names a part that
@@ -29,14 +31,36 @@ to give the parts enough air that the auto-picked port faces the right way, or t
 
 **`TUBE_THROUGH_SOLID`** — a link's segment crosses a part between its two endpoints. Fix by
 **routing around or moving parts**: raise the flow over the obstacle by attaching it to a `top`
-port, drop it under via `bottom`, or move the parts so the straight path clears every other solid's
-box. Links are straight port-to-port segments, so an endpoint change is often the whole fix.
+port, drop it under via `bottom`, or move the parts so the path clears every other solid's box. A
+tube runs straight between its ports; a cable sags below the straight line as a sampled polyline
+(`linkPoints` in `kit/iso.mjs`), so raising a cable's endpoints is the usual fix.
+
+**`SOLID_OVERLAP`** — two solids genuinely interpenetrate in world space (their axis-aligned boxes
+overlap on all three axes by more than a small epsilon). Resting on a plate or on top of another
+solid is **not** an overlap: shared faces and tangency are fine, and plates may not overlap other
+plates. Fix with **air**: move the shorter part until the touching faces just meet, or shrink it so
+it butts the other instead of crossing it.
+
+**`FLOATING`** — a non-plate solid is not supported. Every solid must sit with its base at the top
+of the ground plate, a raised plate, or another solid whose footprint overlaps its base footprint.
+Fix by **dropping the part onto its support**: set its base `z` to the supporting surface's top
+face, or move it so its footprint sits over that surface.
+
+**`LABEL_OVERLAP`** — two projected label chips intersect on screen. Fix by **giving the labels
+room**: move one part so its top face projects clear of the other, or shorten the labels (shorter
+text is a narrower chip). The audit measures the same chip boxes the renderer draws.
 
 **`DEPTH_INVERSION`** — two solids overlap on screen and share the same depth key, so the painter's
 order is ambiguous and one may paint over the other incorrectly. Fix by **separating the equal
 depth keys**: nudge one part in `x`, `y` or `z` so its `x + y + z` differs, or increase the gap
 until their projected footprints no longer overlap. Equal depth is fine as long as the footprints
 do not overlap.
+
+### Warnings
+
+- `MULTIPLE_ACCENTS` — more than one part sets `accent: true`. One accent per subject: replica sets
+  and partition groups may share a single accent (Kafka's three partitions are one intended
+  subject), but unrelated subjects must not compete. Clear the extra accents.
 
 ### Other codes
 

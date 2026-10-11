@@ -17,6 +17,10 @@ if (existsSync(join(audit_dir, 'iso.mjs'))) {
 
 const audit_ANCHOR_TOLERANCE = 1e-3;
 const audit_ENDPOINT_MARGIN = 1e-2;
+const audit_SOLID_EPS = 1e-4;
+const audit_SUPPORT_TOL = 1e-3;
+const audit_FOOTPRINT_EPS = 1e-6;
+const audit_LABEL_EPS = 1e-3;
 
 function audit_structural(scene) {
   const violations = [];
@@ -295,17 +299,145 @@ function audit_depth(scene, violations) {
   }
 }
 
+function audit_collectSolids(scene) {
+  const solids = [];
+  for (const part of scene.parts || []) {
+    if (!part || typeof part !== 'object') continue;
+    const aabb = audit_solidAABB(part);
+    if (!aabb) continue;
+    solids.push({ id: part.id, kind: part.kind, min: aabb.min, max: aabb.max });
+  }
+  return solids;
+}
+
+function audit_axisOverlap(first, second, axis) {
+  return Math.min(first.max[axis], second.max[axis]) - Math.max(first.min[axis], second.min[axis]);
+}
+
+function audit_solids(scene, violations) {
+  const solids = audit_collectSolids(scene);
+  for (let a = 0; a < solids.length; a += 1) {
+    for (let b = a + 1; b < solids.length; b += 1) {
+      const first = solids[a];
+      const second = solids[b];
+      const overlapX = audit_axisOverlap(first, second, 0);
+      const overlapY = audit_axisOverlap(first, second, 1);
+      const overlapZ = audit_axisOverlap(first, second, 2);
+      if (overlapX > audit_SOLID_EPS && overlapY > audit_SOLID_EPS && overlapZ > audit_SOLID_EPS) {
+        violations.push({
+          code: 'SOLID_OVERLAP',
+          message: `solids "${first.id}" and "${second.id}" interpenetrate by (${overlapX.toFixed(3)}, ${overlapY.toFixed(3)}, ${overlapZ.toFixed(3)}) world units`,
+          pair: [first.id, second.id]
+        });
+      }
+    }
+  }
+}
+
+function audit_groundTop(scene) {
+  let groundZ = null;
+  let top = 0;
+  for (const part of scene.parts || []) {
+    if (!part || part.kind !== 'plate' || !Array.isArray(part.at) || !Array.isArray(part.size)) continue;
+    if (groundZ === null || part.at[2] < groundZ) {
+      groundZ = part.at[2];
+      top = part.at[2] + part.size[2];
+    }
+  }
+  return groundZ === null ? 0 : top;
+}
+
+function audit_floating(scene, violations) {
+  const solids = audit_collectSolids(scene);
+  const groundTop = audit_groundTop(scene);
+  for (const solid of solids) {
+    if (solid.kind === 'plate') continue;
+    const base = solid.min[2];
+    if (Math.abs(base - groundTop) <= audit_SUPPORT_TOL) continue;
+    let supported = false;
+    for (const other of solids) {
+      if (other.id === solid.id) continue;
+      if (Math.abs(other.max[2] - base) > audit_SUPPORT_TOL) continue;
+      const overlapX = audit_axisOverlap(solid, other, 0);
+      const overlapY = audit_axisOverlap(solid, other, 1);
+      if (overlapX >= -audit_FOOTPRINT_EPS && overlapY >= -audit_FOOTPRINT_EPS) {
+        supported = true;
+        break;
+      }
+    }
+    if (!supported) {
+      violations.push({
+        code: 'FLOATING',
+        message: `solid "${solid.id}" floats at base z ${base.toFixed(3)}; no ground plate, raised plate or solid top supports it`,
+        pair: [solid.id, solid.id]
+      });
+    }
+  }
+}
+
+function audit_labels(scene, violations) {
+  let svg;
+  try {
+    svg = audit_iso.renderSVG(scene);
+  } catch (error) {
+    return;
+  }
+  const chips = [];
+  const pattern = /<rect class="label-chip" x="([^"]*)" y="([^"]*)" width="([^"]*)" height="([^"]*)"[^>]*\/>/g;
+  let match;
+  while ((match = pattern.exec(svg)) !== null) {
+    const x = Number(match[1]);
+    const y = Number(match[2]);
+    const width = Number(match[3]);
+    const height = Number(match[4]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) continue;
+    chips.push({ x, y, right: x + width, bottom: y + height });
+  }
+  const labeled = (scene.parts || []).filter((part) => part && typeof part.label === 'string' && part.label !== '');
+  for (let a = 0; a < chips.length; a += 1) {
+    for (let b = a + 1; b < chips.length; b += 1) {
+      const first = chips[a];
+      const second = chips[b];
+      const overlapX = Math.min(first.right, second.right) - Math.max(first.x, second.x);
+      const overlapY = Math.min(first.bottom, second.bottom) - Math.max(first.y, second.y);
+      if (overlapX > audit_LABEL_EPS && overlapY > audit_LABEL_EPS) {
+        const firstPart = labeled[a];
+        const secondPart = labeled[b];
+        const firstId = firstPart ? firstPart.id : `chip#${a}`;
+        const secondId = secondPart ? secondPart.id : `chip#${b}`;
+        violations.push({
+          code: 'LABEL_OVERLAP',
+          message: `label chips of "${firstId}" and "${secondId}" intersect by (${overlapX.toFixed(3)}, ${overlapY.toFixed(3)}) screen units`,
+          pair: [firstId, secondId]
+        });
+      }
+    }
+  }
+}
+
+function audit_accents(scene) {
+  const accents = (scene.parts || []).filter((part) => part && part.accent === true);
+  if (accents.length <= 1) return [];
+  const ids = accents.map((part) => part.id).join(', ');
+  return [{
+    code: 'MULTIPLE_ACCENTS',
+    message: `${accents.length} parts set accent true (${ids}); one accent per subject - replica sets and partition groups may share one`
+  }];
+}
+
 export function audit(scene) {
   const violations = audit_structural(scene);
   if (scene === null || typeof scene !== 'object' || Array.isArray(scene)) {
-    return { ok: false, violations };
+    return { ok: false, violations, warnings: [] };
   }
+  const warnings = audit_accents(scene);
+  for (const warning of warnings) console.warn(`WARNING: ${warning.message}`);
   if (!audit_iso || !audit_scene) {
     violations.push({
       code: 'AUDIT_PARTIAL',
-      message: 'kit/iso.mjs unavailable; geometry checks (LINK_OFF_ANCHOR, TUBE_THROUGH_SOLID, DEPTH_INVERSION) were skipped'
+      message: 'kit/iso.mjs unavailable; geometry checks (LINK_OFF_ANCHOR, TUBE_THROUGH_SOLID, DEPTH_INVERSION, SOLID_OVERLAP, FLOATING, LABEL_OVERLAP) were skipped'
     });
-    return { ok: violations.length === 0, violations };
+    return { ok: violations.length === 0, violations, warnings };
   }
   const byId = new Map();
   for (const part of scene.parts || []) {
@@ -314,7 +446,10 @@ export function audit(scene) {
   audit_links(scene, byId, violations);
   audit_tubes(scene, violations);
   audit_depth(scene, violations);
-  return { ok: violations.length === 0, violations };
+  audit_solids(scene, violations);
+  audit_floating(scene, violations);
+  audit_labels(scene, violations);
+  return { ok: violations.length === 0, violations, warnings };
 }
 
 const audit_isMain = Boolean(process.argv[1]) &&

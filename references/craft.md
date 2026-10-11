@@ -33,8 +33,10 @@ glance and holds up in a README.
 
 ## Color discipline
 
-- **One accent, only.** Set `accent: true` on the single part the figure is about; everything
-  else is unaccented. Two accents compete and the figure loses its subject.
+- **One accent per subject.** Set `accent: true` on the parts that make up the figure's subject and
+  nothing else. Replica sets and partition groups are one subject, so they may share the accent
+  (Kafka's three partitions are the intended subject). Two unrelated subjects compete and the
+  figure loses its point; the audit warns when more than one accent is set.
 - Match material to role:
 
   | role | token |
@@ -87,7 +89,7 @@ glance and holds up in a README.
 | A part floats above the plate | Drop its `z` to the plate top, or rest it on the part below |
 | Two solids read as one blob | Add at least 2.5 grid air between them |
 | Traffic looks busy and noisy | Cut to 2–4 flows, lower `speed` into 8–16, set `count` to 2–3 |
-| Two parts shout equally | Keep `accent: true` on one; clear it on the rest |
+| Two unrelated subjects shout equally | Share the accent within one replica set or partition group; clear it on every other subject |
 | A number appears on a box | Move it into `readout`, and make sure it is real |
 | Label too long to read | Shorten to the noun or initialism |
 | Figure cropped at the edges | Grow `size` or move parts inward; leave margin |
