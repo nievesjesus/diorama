@@ -6,7 +6,7 @@ The rendering core. Zero runtime dependencies, ESM only, Node >= 20.
 ## Files
 
 - `kit/iso.mjs` — projection, geometry builders, materials, gradients, `renderSVG`.
-- `kit/iso.css` — card chrome and both themes.
+- `kit/iso.css` — world chrome, atmosphere and HUD, both themes.
 - `kit/iso.test.mjs` — `node --test kit/iso.test.mjs`.
 - `kit/scene.mjs`, `kit/motion.mjs` — validation/flow sampling and browser runtime (separate owners).
 
@@ -100,9 +100,9 @@ The renderer aims at a machined miniature, not a flat diagram.
 1. Build every part into a `Solid`; links resolve to the nearest port (or an explicit `fromPort`/`toPort`) and become `tube`/`cable` paths.
 2. Sort solids ascending by `depthKey` (anchor `x+y+z`; cylinders use the axis center, links the endpoint average) and paint back-to-front (painter's algorithm).
 3. Compute the projected bounds of every polygon and path point, then fit: `scale = min(availW/contentW, availH/contentH)` inside `scene.size` with a 32px margin and 38px reserved on top when `title` exists. The fit is centered and the root `<svg>` carries `data-fill`, the fraction of the usable stage the drawing occupies.
-4. Emit one `<g transform="translate(tx,ty) scale(s)">` containing the default ground, low floor plates, depth-sorted shadows, masked reflections, depth-sorted raised solids and links, then the label chips. Labels are drawn in group space with `font-size = 12/s`, a paper chip and centered `.label` text.
+4. Emit one `<g transform="translate(tx,ty) scale(s)">` containing the default ground, low floor plates with their shadows immediately beneath them, depth-sorted equipment shadows, masked reflections, depth-sorted raised solids and links, then the label chips. Labels are drawn in group space with `font-size = 12/s`, a paper chip and centered `.label` text.
 
-Parts render as `<g class="part" data-id="...">`; links as `<g class="link" data-from data-to>`. Flow packets are never rendered statically: `kit/motion.mjs` mounts them into `g.packets` at runtime, each circle carrying a 0.6px ink-edge ring (`stroke-width` with `non-scaling-stroke`) so the dots pop against both light and dark grounds.
+Parts render as `<g class="part" data-id="...">`; links as `<g class="link" data-from data-to>`. Flow packets are never rendered statically: `kit/motion.mjs` mounts them into `g.packets` at runtime, each near-white core carrying a 1px darkened token rim (`stroke-width` with `non-scaling-stroke`), a radial aura and a short illuminated cable segment.
 
 ## Determinism and validation
 
@@ -115,7 +115,7 @@ Parts render as `<g class="part" data-id="...">`; links as `<g class="link" data
 
 ## CSS classes
 
-`iso.css` styles the page: `.card`, `.card-head` (+ `h1`, `.subtitle`), `.stage` (+ `svg`), `.card-foot`, `.readout` (`.readout-item`, `.readout-label`, `.readout-value`), `.hint`. Themes come from `body.theme-light` / `body.theme-dark`; the stage uses a soft vertical gradient with a faint vignette and the card a warmer paper gradient. Inside the SVG it styles `svg .label`, `svg .label-chip`, `.part`, `.link`, `.link.active`, `.packet`, `.part.active` (toggled by `motion.mjs`) and `.part .glow`. Self-contained: system font stack, no external assets. Honors `prefers-reduced-motion` and collapses the card to full width below 680px.
+`iso.css` styles the page as a full-bleed world: `.world` (fixed to the viewport, carrying the atmosphere layers — a sky gradient, a three-layer star field, a horizon glow band and a corner vignette — plus the `data-scene` root), `.stage` (+ `svg`, stretched to 100% with `preserveAspectRatio="xMidYMid meet"` so letterbox areas show atmosphere), and the DOM `.hud` (`pointer-events: none`, children `auto`): `.hud-title` (+ `h1`, `.subtitle`), `.readout` (`.readout-item`, `.readout-label`, `.readout-value`), `.hint`, `.wordmark` and four `.corner` brackets. Themes come from `body.theme-light` / `body.theme-dark`; HUD chips are translucent glass with `backdrop-filter: blur(10px) saturate(1.1)` and a solid fallback for engines without it. Inside the SVG it styles `svg .label`, `svg .label-chip`, `.part`, `.link`, `.link.active`, `.packet`, `.part.active` (toggled by `motion.mjs`) and `.part .glow`. `?frame=1` (added by `motion.mjs`) gives the world a padded rounded frame for embeds. Self-contained: system font stack, no external assets. Honors `prefers-reduced-motion` and reflows the HUD below 680px.
 
 ## Capture and layout guidance
 
@@ -125,7 +125,7 @@ Recommended gallery capture: a CSS viewport of `1280x960` at device scale factor
 node scripts/capture.mjs <page.html> <out.png> --w 1280 --h 960 --zoom 2
 ```
 
-The card is fluid and grows up to `1160px` (`max-width: min(1160px, 94vw)`), so at the 1280px capture it spans about 90% of the frame and the figure dominates. Capture both themes (`--theme dark` on `build.mjs`) plus a `?t=<s>` freeze for deterministic motion.
+The world is full-bleed: the SVG stage fills the viewport and the figure is centered by the fit transform, so it dominates the frame at any size. Capture both themes (`--theme` on `build.mjs` bakes the theme into the page) plus a `?t=<s>` freeze for deterministic motion; add `&frame=1` for the embedded framing.
 
 - Scenes of roughly 12-30 parts read best: populated enough to look like a real system, sparse enough that labels stay legible.
 - Add a ground plate under the stack. A `plate` at `z: 0` anchors the drawing and improves depth sorting.
@@ -138,6 +138,8 @@ Constraints: determinism, no filters, zero deps, no comments, no emojis, world-u
 
 Concrete uses 4-unit expansion joints, a dashed center lane, an inner wear line and low-opacity mottling derived solely from integer coordinate hashes. Procedural cells are capped at 1200. A floorless scene receives the same treatment inside its fitted bounds. Contact grime and narrow occlusion ellipses ground every object; all softness comes from radial gradients.
 
+Ground plates read as a floating geological slab. A `plate` at or below `z: 0` with `w * d >= 40` or `detail: "concrete"` gets strata lines on both visible side faces (18% / 12% ink strokes), a darker base stratum band, a vertical ambient-occlusion gradient at the underside rim and a 1px sheen along the top outer edge. The single largest slab also gets one soft void shadow — a `1.6x` radial-gradient ellipse in the ground pass, painted before the slab so the slab occludes its center. Raised platforms qualify for strata but not for the void shadow.
+
 Racks have six to eight slots, front rails, a power strip and top cable stub. Unit labels appear only when a slot affords at least 4 screen pixels. Towers add vertical vents, two drive recesses and a badge. Switch details add sixteen ports and eight green/amber LEDs: author a low `box` to make a switch slab. Crates have X-braced faces; pallets have top slats and fork pockets. Use a short cylinder for a coil. Tank cylinders add two top rails, an axis-aware ladder, a level window and valve handle.
 
 All solids receive crisp rim lighting. Blue, green, plum and amber surfaces receive a faint diagonal sheen. The farther half of raised objects receives a 4–9% paper veil based on sorted depth rank. Color families remain cool metals, restrained saturated plastics, warm data materials and neutral paper/sand/cloud.
@@ -147,3 +149,14 @@ Reflections reuse solid faces mirrored around the projected base center at verti
 Link hardware follows the existing painter ordering: endpoint-token collars or plugs, flange rims for tubes longer than three units, and cable ties at one-third and two-thirds. Connector stroke widths remain world units. Sublabel chips grow to fit the second line; a 1px leader appears when the existing chip lift exceeds 1.5 world units.
 
 The runtime owns packet positions and trails in `kit/motion.mjs`. This renderer never emits static packets. The stylesheet suppresses `.packet-trail` under reduced motion and uses opacity for interaction highlights, without CSS filters.
+
+The runtime also wraps the fit group in a `.parallax` group that drifts up to ±6 px horizontally and ±4 px vertically toward the pointer, eased at 0.07 per frame. Parallax is disabled under `prefers-reduced-motion` and whenever `?t=<s>` freezes the frame, so captures stay deterministic. `?frame=1` adds a `.frame` class to the body for the embedded, rounded world frame.
+
+
+## Procedural finishes and electric current
+
+Each solid casts two bounded directional footprint polygons toward screen bottom-right, scaled by its height at `(0.30h, 0.45h)`. The tight layer fades from 24% shadow ink to transparent; the wider layer extends 1.6 times as far at reduced opacity. Light theme adds one bounce silhouette opposite the key light at half length and 11% alpha; dark theme instead damps both directional layers (72% / 26%) so shadows blend with the void rather than double-darkening the slab. These sit alongside the soft and strengthened contact ellipses, whose alpha scales with the projected footprint (`sqrt(rx*ry) / 2.2`, clamped to `0.55..1.1`) so large parts sit heavier than small ones. Elevated equipment receives a 1.15x radial grime patch immediately before its solid, including equipment on slabs and raised plates. Shadow polygons participate in fitting to prevent clipping.
+
+Finish patterns are defined once per used family: steel/slate/ink/cloud/paper use fine brush lines at 2.5% ink; blue/green/plum/amber/brick use sparse integer-hash matte dots at 4%; copper/sand use warm brush lines. Brush families are emitted three times, once per visible face, with `patternTransform="rotate(30|30|-30)"` so the grain lies flat on the top, left and right faces instead of running screen-horizontal. Thin border strips use the shared rivet pattern. Face overlays preserve the material gradients and underlying painter order. Vented or rack parts receive two to four short hashed grime streaks, kept inside the vent column and shortened to 13% of the face height, lighter on light theme. A `box` at least 1.5 units tall whose side face covers at least six square world units receives one paper equipment decal with two tiny lines, pushed clear of the LED band and the tower badge; plates, slabs and rack fronts stay clean. Concrete receives two or three short hashed hairline cracks. No filters, external images or random state are involved.
+
+Electric pulses retain the original center and flow timing. Each pulse has a 0.215-world-unit near-white core (93% toward white) ringed by a 1px non-scaling rim darkened 42% from the flow token, so it survives on cream as well as on the void. A 0.56-unit radial aura carries the glow; on light theme the aura and the hot strokes both take 7% extra alpha because glow reads weaker on cream. Seven fading, tapering hot strokes cover 19% of the flow path and are shifted 0.042 ahead of the head, so the cable ignites in front of the pulse and cools behind it. Their opacity profile is a pure function of `u` (`0.84 + 0.16 * cos(2*pi*(3u - i/7))`), giving a slow traveling wave with no strobing. The eight sample boundaries are supplemented with every intervening cable vertex so corners are never cut; the tail clamps at the path start. Three restrained sparks sit 0.075 to 0.15 units off the cable normal, capped at 0.55 alpha, from integer hashes of flow index, packet index and `floor(t * 12)`. Accent LEDs enlarge their bloom by 2.5x, capped at 0.5 opacity. Reduced motion omits pulse geometry, and a fixed `?t=` freezes centers, strokes, auras and sparks together.

@@ -229,10 +229,57 @@ test('three-tier fixture content is dominant and never clipped', () => {
   assert.ok(spanY >= height * 0.7, 'drawing spans most of the stage height');
 });
 
-test('iso.css sizes the card for a figure-dominant gallery', () => {
+test('iso.css builds a full-bleed world with atmosphere and a HUD', () => {
   const css = readFileSync(new URL('./iso.css', import.meta.url), 'utf8');
-  assert.match(css, /max-width:\s*min\(1160px,\s*94vw\)/, 'card grows up to 1160px');
-  assert.match(css, /\.stage\s*\{[^}]*padding:\s*10px 16px 14px/s, 'stage padding is tightened');
+  assert.doesNotMatch(css, /max-width:\s*min\(1160px/, 'card max-width framing is gone');
+  assert.doesNotMatch(css, /\.card\s*\{/, 'card chrome is removed');
+  assert.match(css, /\.world\s*\{[^}]*position:\s*fixed/s, 'world is full-bleed');
+  assert.match(css, /\.world\s*\{[^}]*radial-gradient/s, 'atmosphere layers are present');
+  assert.match(css, /\.world\s*\{[^}]*linear-gradient/s, 'sky gradient is present');
+  assert.match(css, /\.stage\s*\{[^}]*position:\s*absolute/s, 'stage fills the world');
+  assert.match(css, /\.stage svg\s*\{[^}]*height:\s*100%/s, 'svg stretches to the viewport');
+  assert.match(css, /\.hud\s*\{[^}]*pointer-events:\s*none/s, 'hud is click-through');
+  assert.match(css, /\.hud\s*>\s*\*\s*\{[^}]*pointer-events:\s*auto/s, 'hud children stay interactive');
+  assert.match(css, /\.hud-title[\s\S]*backdrop-filter:\s*blur\(10px\)/, 'title chip is glass');
+  assert.match(css, /\.readout-item[\s\S]*backdrop-filter:\s*blur\(10px\)/, 'stat chips are glass');
+  assert.match(css, /\.wordmark\s*\{/, 'wordmark present');
+  assert.match(css, /\.corner\.tl[\s\S]*\.corner\.br/, 'corner brackets present');
+  assert.match(css, /body\.frame\s+\.world\s*\{[^}]*border-radius:\s*16px/s, 'frame mode rounds the world');
+});
+
+test('eligible ground plates read as a floating slab with strata', () => {
+  const scene = {
+    version: 1,
+    theme: 'light',
+    size: [1280, 960],
+    title: 'Slab',
+    parts: [
+      { id: 'base', kind: 'plate', at: [0, 0, -0.5], size: [34, 30, 0.5], color: 'sand', detail: 'concrete' },
+      { id: 'box', kind: 'box', at: [5, 5, 0], size: [3, 3, 2], color: 'blue' }
+    ]
+  };
+  const svg = renderSVG(scene);
+  assert.equal(svg, renderSVG(JSON.parse(JSON.stringify(scene))), 'slab render is deterministic');
+  for (const cls of ['face-strata-line', 'face-slab-ao', 'face-slab-rim']) assert.ok(svg.includes(cls), cls);
+  assert.ok(svg.includes('class="ground slab-void"'), 'underside shadow is a ground layer');
+  assert.match(svg, /<ellipse[^>]*fill="url\(#iso-slab-void\)"/, 'void ellipse uses the slab gradient');
+  assert.match(svg, /<radialGradient id="iso-slab-void"[^>]*>.*stop-opacity="0.26"/s, 'void ink starts near 26%');
+  const strata = [...svg.matchAll(/face-strata-line/g)];
+  assert.ok(strata.length >= 4, 'at least two strata lines per visible face');
+  const voidIndex = svg.indexOf('class="ground slab-void"');
+  const baseIndex = svg.indexOf('data-id="base"');
+  assert.ok(voidIndex >= 0 && voidIndex < baseIndex, 'void paints before the slab');
+});
+
+test('small raised plates are not decorated as slabs', () => {
+  const scene = {
+    version: 1,
+    theme: 'light',
+    parts: [{ id: 'tray', kind: 'plate', at: [2, 2, 1.2], size: [4, 3, 0.4], color: 'copper', detail: 'tray' }]
+  };
+  const svg = renderSVG(scene);
+  assert.ok(!svg.includes('face-strata-line'), 'no strata on a small raised plate');
+  assert.ok(!svg.includes('class="ground slab-void"'), 'no void shadow without an eligible ground plate');
 });
 
 test('renderSVG emits deterministic face gradients referenced by solids', () => {
@@ -340,12 +387,12 @@ test('rendered links keep scannable scaled strokes, not hairlines', () => {
   assert.ok(!tubeBase.includes('non-scaling-stroke'), 'tube base scales with the fit transform');
 });
 
-test('flow packets carry a dark edge ring in the runtime', () => {
+test('flow packets carry a token edge ring in the runtime', () => {
   const motion = readFileSync(new URL('./motion.mjs', import.meta.url), 'utf8');
-  assert.match(motion, /packet\.setAttribute\('stroke', ring\)/, 'packets get an edge-colored ring');
-  assert.match(motion, /packet\.setAttribute\('stroke-width', '0\.6'\)/, 'ring is a sub-pixel hairline');
+  assert.match(motion, /packet\.setAttribute\('stroke', motion_rim\(ring\)\)/, 'packets get a darker rim derived from the edge token');
+  assert.match(motion, /packet\.setAttribute\('stroke-width', '1'\)/, 'ring is a one-pixel hairline');
   assert.match(motion, /packet\.setAttribute\('vector-effect', 'non-scaling-stroke'\)/, 'ring stays crisp at any zoom');
-  assert.match(motion, /const ring = TOKENS\[/, 'ring color comes from the theme tokens');
+  assert.match(motion, /const color = TOKENS\[/, 'ring color comes from the theme tokens');
 });
 
 test('labels render as museum chips around the text', () => {
@@ -413,6 +460,7 @@ test('lighting is layered above floors with masked reflections only on supported
   const svg = renderSVG(scene);
   assert.equal([...svg.matchAll(/class="reflection"/g)].length, 2);
   assert.match(svg, /mask="url\(#iso-reflection-mask\)"/);
+  assert.ok(svg.indexOf('class="ground floor-shadow"') < svg.indexOf('data-id="floor"'));
   assert.ok(svg.indexOf('data-id="floor"') < svg.indexOf('class="ground"'));
   assert.ok(svg.indexOf('class="reflections"') < svg.indexOf('data-id="far"'));
   for (const cls of ['face-rim', 'face-sheen', 'face-fog']) assert.ok(svg.includes(cls), cls);
@@ -461,5 +509,72 @@ test('cylinder body silhouettes are convex and never self-intersect', () => {
       const a = points[i], b = points[(i + 1) % points.length], c = points[(i + 2) % points.length];
       assert.ok((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) >= -1e-10, axis);
     }
+  }
+});
+
+test('directional shadows use two gradient silhouettes per solid before raised objects', () => {
+  const scene = makeScene('dark');
+  const svg = renderSVG(scene);
+  const shadows = [...svg.matchAll(/<polygon[^>]*class="shadow-directional"/g)];
+  assert.equal(shadows.length, scene.parts.length * 2);
+  for (const [element] of shadows) assert.match(element, /fill="url\(#iso-shadow-directional\)"/);
+  assert.equal((svg.match(/id="iso-shadow-directional"/g) || []).length, 1);
+  assert.ok(svg.indexOf('class="shadow-directional"') < svg.indexOf('data-id="web"'));
+  assert.match(svg, /stop-opacity="0.24"/);
+});
+
+test('finish patterns are defined once per used family and overlay visible faces', () => {
+  for (const theme of ['light', 'dark']) {
+    const svg = renderSVG(makeScene(theme));
+    for (const family of ['matte', 'rivets']) {
+      assert.equal((svg.match(new RegExp('id="iso-tex-' + family + '"', 'g')) || []).length, 1);
+      assert.ok(svg.includes('fill="url(#iso-tex-' + family + ')"'));
+    }
+    for (const family of ['brush', 'brushedWarm']) {
+      for (const [variant, angle] of [['top', 30], ['left', 30], ['right', -30]]) {
+        const id = 'iso-tex-' + family + '-' + variant;
+        assert.equal((svg.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
+        assert.match(svg, new RegExp('id="' + id + '"[^>]*patternTransform="rotate\\(' + angle + '\\)"'));
+      }
+      assert.ok(svg.includes('fill="url(#iso-tex-' + family + '-left)"'));
+      assert.ok(svg.includes('fill="url(#iso-tex-' + family + '-right)"'));
+    }
+    assert.match(svg, /fill-opacity="0.025"[^>]*class="face face-texture"/);
+    assert.match(svg, /fill-opacity="0.04"[^>]*class="face face-texture"/);
+  }
+  const svg = renderSVG({ parts: [makeScene('light').parts[0]] });
+  assert.ok(!svg.includes('id="iso-tex-brush-top"'));
+  assert.ok(!svg.includes('id="iso-tex-brushedWarm-top"'));
+});
+
+test('equipment decals require a large enough side face and grime stays under the vents', () => {
+  for (const face of [5, 6, 20]) {
+    const scene = { parts: [{ id: 'equipment', kind: 'box', at: [0, 0, 0], size: [4, face / 3, 3], color: 'steel', vents: true }] };
+    const svg = renderSVG(scene);
+    assert.equal((svg.match(/class="face face-decal"/g) || []).length, face >= 6 ? 1 : 0);
+    assert.equal((svg.match(/class="face face-decal-line"/g) || []).length, face >= 6 ? 2 : 0);
+    const grime = (svg.match(/class="face face-grime"/g) || []).length;
+    assert.ok(grime >= 2 && grime <= 4);
+    assert.equal(svg, renderSVG(scene));
+  }
+  const flat = { parts: [{ id: 'tray', kind: 'plate', at: [0, 0, 0], size: [6, 6, 0.4], color: 'sand', vents: true }] };
+  assert.ok(!renderSVG(flat).includes('class="face face-decal"'), 'slabs and thin plates stay clean');
+  const led = { parts: [{ id: 'node', kind: 'box', at: [0, 0, 0], size: [4, 4, 3], color: 'steel', leds: 3, vents: true }] };
+  const decal = renderSVG(led).match(/<polygon points="([^"]+)"[^>]*class="face face-decal"/);
+  assert.ok(decal, 'led equipment still gets a decal');
+});
+
+test('slab and raised platform equipment receive radial contact grime', () => {
+  for (const z of [-0.4, 0, 3]) {
+    const scene = { parts: [
+      { id: 'floor', kind: 'plate', at: [0, 0, z], size: [8, 8, 0.4], color: 'cloud', detail: 'concrete' },
+      { id: 'rack', kind: 'box', at: [2, 2, z + 0.4], size: [3, 3, 3], color: 'steel' }
+    ] };
+    const svg = renderSVG(scene);
+    assert.match(svg, /<ellipse[^>]*fill="url\(#iso-contact-grime\)"/);
+    assert.ok(svg.indexOf('class="surface-occlusion"') < svg.indexOf('data-id="rack"'));
+    const cracks = (svg.match(/class="face face-crack"/g) || []).length;
+    assert.ok(cracks >= 2 && cracks <= 3);
+    assert.equal(svg, renderSVG(scene));
   }
 });

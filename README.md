@@ -25,7 +25,7 @@ Almost every architecture diagram is a box with a label, and it drifts from the 
 
 [![k8s (light) — three replicas delivered by CI](.github/assets/gallery-k8s.png)](examples/k8s-ci/index.html)
 
-Every page is a single self-contained HTML file; open one and the flows move. Append `?t=2.5` to freeze a frame.
+Every page is a full-bleed animated world in one self-contained HTML file; open one, hover to trace links, append `?t=2.5` to freeze a frame, `?frame=1` for a framed embed.
 
 ## Install
 
@@ -73,7 +73,7 @@ More prompts:
 
 - **Scene spec v1 (JSON).** A compact, deterministic description of parts, links, flows and readouts. You can write it by hand or let Claude derive it from a real config or a plain description.
 - **Isometric kit.** Projects the scene into a 2:1 isometric SVG, paints solids back to front with a fixed four-tone material palette, and wires parts together with tubes and cables.
-- **Standalone HTML.** Emits one portable file with no external assets. Append `?t=<seconds>` to the URL to seek and freeze the animation on an exact frame.
+- **Standalone HTML.** Emits one portable file with no external assets. Append `?t=<seconds>` to the URL to seek and freeze the animation on an exact frame, or `?frame=1` for a framed embed.
 - **Geometry audit and capture.** `--audit` proves nothing overlaps or floats, and headless capture verifies the rendered page frame by frame.
 
 ## Requirements
@@ -99,7 +99,7 @@ diorama/
 ├── build.mjs                 scene spec in, standalone HTML out
 ├── kit/
 │   ├── iso.mjs               isometric camera, solids, palette, SVG renderer
-│   ├── iso.css               the card, both themes, reduced motion
+│   ├── iso.css               the world chrome and HUD, both themes, reduced motion
 │   ├── scene.mjs             scene spec v1 parsing and normalization
 │   ├── motion.mjs            flow animation and seek
 │   └── audit.mjs             the geometry audit

@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `from-compose` CLI: reads a docker-compose file and writes a first-draft scene spec (`node scripts/from-compose.mjs docker-compose.yml --out scene.json`).
 - Three example scenes, committed as scene plus built page: a three-tier web stack, a Kafka pipeline and a Kubernetes CI deployment.
 - Capture zoom semantics: `--w`/`--h` set the CSS viewport and `--zoom` the device scale factor, so the PNG is W*zoom by H*zoom with the same 1x layout.
-- Figure-dominant card: the card hugs the figure at `max-width: min(1160px, 94vw)` and fits the frame, so the diagram leads instead of floating in whitespace.
+- Full-bleed world presentation: floating slab, atmospheric void, glass HUD, `?frame=1` embed mode, subtle parallax.
 - Evals: test prompts and the properties a good answer must have.
 - Concrete environments: a plate with `detail: "concrete"` renders joints, deterministic mottling and wear lanes so figures sit on a real ground.
 - Surface detail: inset panels and screws, hazard striping and a hardware vocabulary (rack, tower, switch, tank, crate, pallet, coil) in `kit/iso.mjs`.

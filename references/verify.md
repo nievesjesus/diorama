@@ -60,6 +60,8 @@ Flags:
   with the **same CSS layout** as a 1× run.
 - `--t` — freezes the runtime at that many seconds, appended as `?t=<value>`. Use it to capture a
   clean frame instead of whatever instant the shot lands on.
+- `?frame=1` — use it in the URL when capturing an embed-style framed shot (body padding + rounded
+  border); default is full-bleed otherwise.
 
 Chrome is found automatically (`$CHROME_PATH`, then platform paths, then the Playwright cache).
 Exit 3 means no Chrome was found.
@@ -70,7 +72,8 @@ Exit 3 means no Chrome was found.
 - **Floating ends** — a tube or cable that stops short of a part (snap the port).
 - **Unreadable labels** — text too small or clipped against a face (shorten the label).
 - **Busy flows** — too many dots, too fast (cut count, slow the speed).
-- **Dead space or crowding** — a lonely corner or parts jammed at an edge (retune `size`).
+- **Slab framing** — the slab should float with visible atmosphere on all four sides, not touch the frame
+  edges. Crowding means parts or labels colliding, not empty void (retune `size` or move parts).
 - **Cropping** — anything cut off by the viewport.
 
 Fix, rebuild, and capture again. Repeat until it reads.

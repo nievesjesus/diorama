@@ -6,7 +6,8 @@ description: Turn a software system into a detailed, interactive isometric figur
 # Diorama
 
 Turn a software system into a living isometric figure: one self-contained HTML page that
-draws the real stack as SVG solids, threads animated flows through it, and passes a
+renders as a full-bleed animated world — a floating slab in an atmospheric void under a glass
+HUD — draws the real stack as SVG solids, threads animated flows through it, and passes a
 mechanical geometry audit before it ships.
 
 ## Workflow
@@ -52,11 +53,14 @@ mechanical geometry audit before it ships.
    `TUBE_THROUGH_SOLID`, `DEPTH_INVERSION` (details in `references/verify.md`).
 5. **Verify visually.** Capture the page with
    `node scripts/capture.mjs <page.html> preview.png --t 2.5 --w 1280 --h 960` and **read the
-   PNG like a critic**: overlaps, floating ends, unreadable labels, busy flows, dead space.
-   Fix and repeat. A figure ships only after you have looked at it.
+   PNG like a critic**: the slab should float with atmosphere on all four sides — check overlaps,
+   floating ends, unreadable labels, busy flows, crowding. Fix and repeat. A figure ships only
+   after you have looked at it.
 6. **Deliver.** The build emits a standalone HTML file that works from a double-click, with no
-   network and no external assets. Add `--svg out.svg` for a lone static SVG, or capture a PNG.
-   Produce both themes when asked.
+   network and no external assets: it renders as a full-bleed animated world — a floating slab in
+   an atmospheric void under a glass HUD. Hover to trace links; append `?t=<seconds>` to freeze a
+   frame and `?frame=1` for a framed embed. Add `--svg out.svg` for a lone static SVG, or capture
+   a PNG. Produce both themes when asked.
 
 ## Quickstart from docker-compose
 

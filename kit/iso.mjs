@@ -22,6 +22,7 @@ const ISO_SHADOW_OFFSET = 0.32;
 const ISO_LED_RADIUS = 0.06;
 const ISO_LED_GLOW = 0.16;
 const ISO_LED_RING = ['green', 'amber', 'blue', 'plum'];
+const ISO_TEX_FACES = [['top', 30], ['left', 30], ['right', -30]];
 
 const ISO_BASE = {
   light: {
@@ -196,10 +197,62 @@ function iso_radialGradient(id, color, stops) {
   return markup + '</radialGradient>';
 }
 
-function iso_defs(theme) {
+function iso_fadeGradient(id, x1, y1, x2, y2, color, stops) {
+  let markup = '<linearGradient id="' + id + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '">';
+  for (const stop of stops) {
+    markup += '<stop offset="' + stop[0] + '" stop-color="' + color + '" stop-opacity="' + stop[1] + '"/>';
+  }
+  return markup + '</linearGradient>';
+}
+
+function iso_finish(token) {
+  if (['copper', 'sand'].includes(token)) return 'brushedWarm';
+  return ['blue', 'green', 'plum', 'amber', 'brick'].includes(token) ? 'matte' : 'brush';
+}
+
+function iso_textureDefs(parts, table) {
+  const families = new Set(parts.map((part) => iso_finish(part.color)));
+  families.add('rivets');
+  let markup = '';
+  for (const family of families) {
+    const ink = family === 'brushedWarm' ? table.copper.edge : table.ink.left;
+    if (family === 'brush' || family === 'brushedWarm') {
+      for (const [variant, angle] of ISO_TEX_FACES) {
+        markup += '<pattern id="iso-tex-' + family + '-' + variant + '" width="0.8" height="0.8" patternUnits="userSpaceOnUse" patternTransform="rotate(' + angle + ')">';
+        markup += '<path d="M0 0.12H0.8 M0 0.38H0.8 M0 0.65H0.8" fill="none" stroke="' + ink + '" stroke-width="0.022"/>';
+        markup += '</pattern>';
+      }
+      continue;
+    }
+    markup += '<pattern id="iso-tex-' + family + '" width="0.8" height="0.8" patternUnits="userSpaceOnUse">';
+    const count = family === 'rivets' ? 1 : 5;
+    for (let i = 0; i < count; i += 1) {
+      const hash = iso_hash(i, 71);
+      markup += '<circle cx="' + iso_format(0.06 + (hash % 680) / 1000) + '" cy="' + iso_format(0.06 + ((hash >>> 12) % 680) / 1000) + '" r="' + (family === 'rivets' ? '0.035' : '0.03') + '" fill="' + ink + '"/>';
+    }
+    markup += '</pattern>';
+  }
+  return markup;
+}
+
+function iso_textureRef(finish, face) {
+  if (finish !== 'brush' && finish !== 'brushedWarm') return 'iso-tex-' + finish;
+  if (face === 'right' || face === 'body') return 'iso-tex-' + finish + '-right';
+  if (face === 'left') return 'iso-tex-' + finish + '-left';
+  return 'iso-tex-' + finish + '-top';
+}
+
+function iso_idHash(id) {
+  let hash = 2166136261;
+  for (const char of String(id || 'ground')) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return hash >>> 0;
+}
+
+function iso_defs(theme, parts) {
   const table = TOKENS[theme];
   const shadowInk = theme === 'dark' ? '#05070a' : table.ink.left;
-  let defs = '<defs>';
+  const slabVoid = theme === 'dark' ? '#04060a' : table.ink.left;
+  let defs = '<defs>' + iso_textureDefs(parts, table);
   for (const name of Object.keys(table)) {
     const base = table[name].left;
     defs += iso_linearGradient(iso_gradientId(name, 'top'), '0', '0', '0', '1',
@@ -212,7 +265,12 @@ function iso_defs(theme) {
       [['0', iso_lighten(base, 0.34)], ['1', iso_lighten(base, 0.54)]]);
   }
   defs += iso_radialGradient('iso-shadow-soft', shadowInk, [['0', '0.2'], ['0.72', '0.08'], ['1', '0']]);
-  defs += iso_radialGradient('iso-shadow-contact', shadowInk, [['0', '0.28'], ['0.7', '0.12'], ['1', '0']]);
+  defs += iso_radialGradient('iso-shadow-contact', shadowInk, [['0', '0.38'], ['0.7', '0.18'], ['1', '0']]);
+  defs += iso_fadeGradient('iso-shadow-directional', '0', '0', '0.67', '1', shadowInk, [['0', '0.24'], ['1', '0']]);
+  if (theme !== 'dark') defs += iso_fadeGradient('iso-shadow-bounce', '1', '1', '0.33', '0', shadowInk, [['0', '0.11'], ['1', '0']]);
+  defs += iso_radialGradient('iso-contact-grime', shadowInk, [['0', '0.2'], ['0.55', '0.12'], ['1', '0']]);
+  defs += iso_radialGradient('iso-slab-void', slabVoid, [['0', '0.26'], ['0.55', '0.12'], ['1', '0']]);
+  defs += iso_fadeGradient('iso-slab-ao', '0', '0', '0', '1', slabVoid, [['0', '0'], ['1', '0.5']]);
   defs += '<pattern id="iso-hazard" width="0.34" height="0.34" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="0.34" height="0.34" fill="' + table.amber.left + '"/><rect width="0.17" height="0.34" fill="' + table.slate.edge + '"/></pattern>';
   defs += '<linearGradient id="iso-sheen" x1="0" y1="0.25" x2="1" y2="0.83"><stop offset="0.2" stop-color="white" stop-opacity="0"/><stop offset="0.48" stop-color="white" stop-opacity="0.08"/><stop offset="0.7" stop-color="white" stop-opacity="0"/></linearGradient>';
   defs += iso_radialGradient('iso-reflection-fade', '#ffffff', [['0', '1'], ['0.4', '1'], ['1', '0']]);
@@ -424,6 +482,28 @@ function iso_detail(part, tones, theme) {
   const front = (u, v) => [x + u * w, y + d, z + v * h];
   const side = (u, v) => [x + w, y + u * d, z + v * h];
   const rect = (face, u, v, a, b, cls, fill, opacity) => poly([face(u, v), face(a, v), face(a, b), face(u, b)], cls, fill, opacity);
+  const seed = iso_idHash(part.id);
+  if (part.vents || part.detail === 'rack') {
+    const smudge = theme === 'light' ? 0.045 : 0.065;
+    for (let i = 0; i < 2 + seed % 3; i += 1) {
+      const hash = iso_hash(seed, i);
+      const u = 0.31 + (hash % 330) / 1000;
+      const v = 0.2 + ((hash >>> 10) % 260) / 1000;
+      rect(front, u, Math.max(0.06, v - 0.13), Math.min(0.69, u + 0.055 / w), v, 'face-grime', ink, smudge);
+    }
+  }
+  const crowded = Number.isInteger(part.leds) && part.leds > 0 ? 0.68 : part.detail === 'tower' ? 0.64 : 0.8;
+  if (part.id && part.kind === 'box' && part.detail !== 'rack' && h >= 1.5 && d * h >= 6) {
+    const a = Math.min(0.9 / d, 0.3);
+    const b = Math.min(0.5 / h, 0.24);
+    const u = 0.18 + (seed % 300) / 1000;
+    const v = Math.min(0.25 + ((seed >>> 9) % 200) / 1000, crowded - b);
+    rect(side, u, v, u + a, v + b, 'face-decal', TOKENS[theme].paper.top, 0.72);
+    for (const row of [0.33, 0.67]) line([side(u + a * 0.18, v + b * row), side(u + a * 0.8, v + b * row)], 'face-decal-line', 0.55, 0.45, tones.edge);
+  }
+  for (const face of [front, side]) {
+    for (const u of [0.05, 0.93]) rect(face, u, 0.07, u + 0.02, 0.93, 'face-rivets', 'url(#iso-tex-rivets)', 0.22);
+  }
   if (part.panels) {
     for (const face of [front, side]) {
       for (const inset of [0.12, 0.14]) line([face(inset, inset), face(1 - inset, inset), face(1 - inset, 1 - inset), face(inset, 1 - inset), face(inset, inset)], 'face-panel', inset === 0.12 ? 0.18 : 0.1, 0.6, ink);
@@ -463,6 +543,12 @@ function iso_detail(part, tones, theme) {
     for (const u of [0.12, 0.62]) rect(front, u, 0.1, u + 0.25, 0.55, 'face-fork-pocket', tones.edge, 0.7);
   }
   if (part.detail === 'concrete') {
+    for (let i = 0; i < 2 + seed % 2; i += 1) {
+      const hash = iso_hash(seed, i);
+      const u = 0.15 + (hash % 550) / 1000;
+      const v = 0.15 + ((hash >>> 10) % 550) / 1000;
+      line([[x + w * u, y + d * v, z + h], [x + w * (u + 0.04), y + d * (v + 0.025), z + h], [x + w * (u + 0.065), y + d * (v + 0.01), z + h], [x + w * (u + 0.1), y + d * (v + 0.04), z + h]], 'face-crack', 0.08, 0.55, ink);
+    }
     for (let xx = Math.ceil((x + 0.1) / 4) * 4; xx < x + w - 0.1; xx += 4) line([[xx, y + 0.1, z + h], [xx, y + d - 0.1, z + h]], 'face-joint', 0.14, 0.6, ink);
     for (let yy = Math.ceil((y + 0.1) / 4) * 4; yy < y + d - 0.1; yy += 4) line([[x + 0.1, yy, z + h], [x + w - 0.1, yy, z + h]], 'face-joint', 0.14, 0.6, ink);
     let cells = 0;
@@ -487,6 +573,12 @@ function iso_detail(part, tones, theme) {
 
 function iso_material(solid, part, theme) {
   const tones = TOKENS[theme][part.color];
+  const finish = iso_finish(part.color);
+  solid.polygons = solid.polygons.flatMap((face) => {
+    const match = /face-(top|left|right|body|cap)$/.exec(face.cls || '');
+    if (!match) return [face];
+    return [face, { points: face.points, fill: 'url(#' + iso_textureRef(finish, match[1]) + ')', opacity: finish === 'matte' ? 0.04 : 0.025, stroke: 'none', cls: 'face face-texture' }];
+  });
   const top = solid.polygons.find((p) => p.cls === 'face face-top');
   if (top) {
     solid.polygons.push({ points: top.points, fill: 'none', stroke: iso_lighten(tones.top, 0.3), strokeWidth: 1, vectorEffect: true, cls: 'face face-rim' });
@@ -598,7 +690,7 @@ function iso_boxDecor(part, tones, theme) {
       const color = ISO_LED_RING[index % ISO_LED_RING.length];
       const led = iso_token(color, theme).left;
       polygons.push({
-        points: iso_circlePlane('x', east + 0.004, yy, zLed, ISO_LED_GLOW)
+        points: iso_circlePlane('x', east + 0.004, yy, zLed, part.accent ? ISO_LED_GLOW * 2.5 : ISO_LED_GLOW)
           .map((point) => project(point[0], point[1], point[2])),
         fill: led,
         opacity: 0.5,
@@ -1073,8 +1165,19 @@ function iso_footprintCorners(part) {
     return [[x, y, z], [x + width, y, z], [x + width, y + depth, z], [x, y + depth, z]];
   }
   const radius = Number(part.radius);
-  const basis = iso_axisBasis(part.axis == null ? 'z' : part.axis);
+  const axis = part.axis == null ? 'z' : part.axis;
+  const basis = iso_axisBasis(axis);
   const points = [];
+  if (axis !== 'z') {
+    const h = Number(part.h);
+    for (let index = 0; index < 16; index += 1) {
+      const angle = index / 16 * Math.PI * 2;
+      points.push(axis === 'x'
+        ? [x + h / 2 + h / 2 * Math.cos(angle), y + radius * Math.sin(angle), z - radius]
+        : [x + radius * Math.cos(angle), y + h / 2 + h / 2 * Math.sin(angle), z - radius]);
+    }
+    return points;
+  }
   for (let index = 0; index < ISO_SEGMENTS; index += 1) {
     const angle = (index / ISO_SEGMENTS) * Math.PI * 2;
     points.push(iso_ringPoint(basis, part.at, 0, radius, angle));
@@ -1111,6 +1214,70 @@ function iso_ellipsePoints(cx, cy, rx, ry) {
   return points;
 }
 
+function iso_isSlab(part) {
+  if (!part || part.kind !== 'plate') return false;
+  if (!Array.isArray(part.at) || Number(part.at[2]) > 0) return false;
+  const [width, depth] = iso_prismSize(part);
+  return width * depth >= 40 || part.detail === 'concrete';
+}
+
+function iso_slabDecor(part, tones) {
+  const [x, y, z] = part.at;
+  const [width, depth, height] = iso_prismSize(part);
+  const c = Math.min(ISO_CHAMFER_MAX, Math.min(width, depth, height) / 6);
+  const inset = c;
+  const dark = iso_darken(tones.left, 0.42);
+  const toScreen = (points) => points.map((point) => project(point[0], point[1], point[2]));
+  const southFace = (u0, u1, za, zb) => toScreen([
+    [x + u0, y + depth, z + za],
+    [x + u1, y + depth, z + za],
+    [x + u1, y + depth, z + zb],
+    [x + u0, y + depth, z + zb]
+  ]);
+  const eastFace = (v0, v1, za, zb) => toScreen([
+    [x + width, y + v0, z + za],
+    [x + width, y + v1, z + za],
+    [x + width, y + v1, z + zb],
+    [x + width, y + v0, z + zb]
+  ]);
+  const polygons = [];
+  const paths = [];
+  const band = { fill: dark, opacity: 0.5, stroke: 'none', cls: 'face face-strata' };
+  polygons.push(Object.assign({ points: southFace(inset, width - inset, 0, height * 0.5), fill: 'url(#iso-slab-ao)', stroke: 'none', cls: 'face face-slab-ao' }));
+  polygons.push(Object.assign({ points: eastFace(inset, depth - inset, 0, height * 0.5), fill: 'url(#iso-slab-ao)', stroke: 'none', cls: 'face face-slab-ao' }));
+  polygons.push(Object.assign({}, band, { points: southFace(inset, width - inset, 0, height * 0.34) }));
+  polygons.push(Object.assign({}, band, { points: eastFace(inset, depth - inset, 0, height * 0.34) }));
+  for (const [fraction, opacity] of [[0.3, 0.18], [0.56, 0.12], [0.8, 0.18]]) {
+    const za = z + height * fraction;
+    const south = toScreen([[x + inset, y + depth, za], [x + width - inset, y + depth, za]]);
+    const east = toScreen([[x + width, y + inset, za], [x + width, y + depth - inset, za]]);
+    paths.push({ points: south, d: iso_pathData(south), stroke: dark, width: 0.7, opacity, vectorEffect: true, cls: 'face face-strata-line' });
+    paths.push({ points: east, d: iso_pathData(east), stroke: dark, width: 0.7, opacity, vectorEffect: true, cls: 'face face-strata-line' });
+  }
+  const top = iso_octagon(x, y, width, depth, c, c, z + height);
+  const sheen = toScreen([top[2], top[3], top[4], top[5], top[6]]);
+  paths.push({ points: sheen, d: iso_pathData(sheen), stroke: iso_lighten(tones.top, 0.5), width: 1, opacity: 0.5, vectorEffect: true, cls: 'face face-slab-rim' });
+  return { polygons, paths };
+}
+
+function iso_slabUndershadow(part) {
+  const base = iso_projectedBase(part);
+  const ellipse = {
+    cx: base.cx,
+    cy: base.cy + base.ry * 0.28,
+    rx: base.rx * 1.6,
+    ry: base.ry * 1.6,
+    fill: 'url(#iso-slab-void)'
+  };
+  return {
+    cls: 'ground slab-void',
+    depthKey: -1e9,
+    polygons: [],
+    paths: [],
+    ellipses: [ellipse]
+  };
+}
+
 function iso_partDepthKey(part) {
   const [x, y, z] = part.at;
   return x + y + z + (part.kind === 'cylinder' ? Number(part.h) / 2 : 0);
@@ -1119,6 +1286,21 @@ function iso_partDepthKey(part) {
 function iso_shadowSolid(part, theme) {
   if (!Array.isArray(part.at)) return null;
   const base = iso_projectedBase(part);
+  const footprint = iso_footprintCorners(part).map((point) => project(...point));
+  const height = part.kind === 'cylinder' ? (part.axis && part.axis !== 'z' ? part.radius * 2 : part.h) : iso_prismSize(part)[2];
+  const sunk = theme === 'dark';
+  const polygons = [1.6, 1].map((spread) => {
+    const near = iso_expand(footprint, spread === 1 ? 1 : 1 + Math.min(0.12, height * 0.12 / Math.max(base.rx, base.ry)));
+    const far = near.map(([x, y]) => [x + height * 0.3 * spread, y + height * 0.45 * spread]);
+    const opacity = spread === 1 ? (sunk ? 0.72 : 1) : (sunk ? 0.26 : 0.45);
+    return { points: iso_hull(near.concat(far)), fill: 'url(#iso-shadow-directional)', opacity, cls: 'shadow-directional' };
+  });
+  if (!sunk) {
+    const near = iso_expand(footprint, 1);
+    const far = near.map(([x, y]) => [x - height * 0.15, y - height * 0.225]);
+    polygons.push({ points: iso_hull(near.concat(far)), fill: 'url(#iso-shadow-bounce)', cls: 'shadow-bounce' });
+  }
+  const ao = Math.max(0.55, Math.min(1.1, Math.sqrt(base.rx * base.ry) / 2.2));
   const offsetX = base.rx * ISO_SHADOW_OFFSET;
   const offsetY = base.ry * ISO_SHADOW_OFFSET;
   const soft = {
@@ -1133,14 +1315,16 @@ function iso_shadowSolid(part, theme) {
     cy: base.cy,
     rx: base.rx * ISO_SHADOW_CONTACT,
     ry: base.ry * ISO_SHADOW_CONTACT,
-    fill: 'url(#iso-shadow-contact)'
+    fill: 'url(#iso-shadow-contact)',
+    opacity: ao
   };
   return {
+    id: part.id,
     cls: 'ground',
     depthKey: iso_partDepthKey(part),
-    polygons: [],
+    polygons,
     paths: [],
-    ellipses: [soft, contact, { cx: base.cx + 0.15, cy: base.cy + 0.08, rx: base.rx * 1.12, ry: base.ry * 0.82, fill: 'url(#iso-shadow-soft)', opacity: 0.24 }, { cx: base.cx, cy: base.cy + base.ry * 0.5, rx: base.rx * 0.83, ry: base.ry * 0.18, fill: 'url(#iso-shadow-contact)', opacity: 0.7 }],
+    ellipses: [soft, contact, { cx: base.cx + 0.15, cy: base.cy + 0.08, rx: base.rx * 1.12, ry: base.ry * 0.82, fill: 'url(#iso-shadow-soft)', opacity: (sunk ? 0.14 : 0.24) * ao }, { cx: base.cx, cy: base.cy + base.ry * 0.5, rx: base.rx * 0.83, ry: base.ry * 0.18, fill: 'url(#iso-shadow-contact)', opacity: 0.7 * ao }],
     extentPoints: iso_ellipsePoints(soft.cx, soft.cy, soft.rx, soft.ry)
   };
 }
@@ -1382,6 +1566,7 @@ export function renderSVG(scene) {
   const partsById = new Map();
   const partSolids = [];
   const groundSolids = [];
+  let primarySlab = null;
   scene.parts.forEach((part, index) => {
     if (!part || typeof part !== 'object') {
       throw new Error('part at index ' + index + ' must be an object');
@@ -1393,10 +1578,20 @@ export function renderSVG(scene) {
       throw new Error('duplicate part id: ' + part.id);
     }
     partsById.set(part.id, part);
-    partSolids.push(iso_buildPart(part, theme));
+    const solid = iso_buildPart(part, theme);
+    if (iso_isSlab(part)) {
+      const decor = iso_slabDecor(part, TOKENS[theme][part.color]);
+      solid.polygons.push(...decor.polygons);
+      solid.paths.push(...decor.paths);
+      const [slabWidth, slabDepth] = iso_prismSize(part);
+      const area = slabWidth * slabDepth;
+      if (!primarySlab || area > primarySlab.area) primarySlab = { area, part };
+    }
+    partSolids.push(solid);
     const shadow = iso_shadowSolid(part, theme);
     if (shadow) groundSolids.push(shadow);
   });
+  const voidSolid = primarySlab ? iso_slabUndershadow(primarySlab.part) : null;
 
   const linkSpecs = [];
   const links = Array.isArray(scene.links) ? scene.links : [];
@@ -1420,7 +1615,7 @@ export function renderSVG(scene) {
     });
   });
 
-  const fitBounds = iso_bounds(partSolids);
+  const fitBounds = iso_bounds(partSolids.concat(groundSolids.map((solid) => ({ polygons: solid.polygons }))));
   for (const spec of linkSpecs) {
     for (const point of spec.points) {
       const projected = project(point[0], point[1], point[2]);
@@ -1458,17 +1653,21 @@ export function renderSVG(scene) {
   const grounds = groundSolids.sort((a, b) => a.depthKey - b.depthKey);
   const grid = iso_gridSolid(scene.parts, fitBounds, theme);
 
+  const voidMarkup = voidSolid ? iso_solidMarkup(voidSolid) : '';
   const gridMarkup = grid ? iso_solidMarkup(grid) : '';
-  const floorMarkup = floorSolids.map((solid) => iso_solidMarkup(solid, fit.scale)).join('');
-  const groundMarkup = grounds.map((solid) => iso_solidMarkup(solid, fit.scale)).join('');
+  const floorMarkup = floorSolids.map((solid) => iso_solidMarkup({ ...grounds.find((shadow) => shadow.id === solid.id), cls: 'ground floor-shadow' }, fit.scale) + iso_solidMarkup(solid, fit.scale)).join('');
+  const groundMarkup = grounds.filter((solid) => !floorIds.has(solid.id)).map((solid) => iso_solidMarkup(solid, fit.scale)).join('');
   const reflections = iso_reflections(scene.parts, partSolids, theme);
   const body = bodies.map((solid) => {
     const part = partsById.get(solid.id);
     let occlusion = '';
-    if (part && part.kind !== 'plate' && part.at[2] > 0) {
+    const supported = part && scene.parts.some((floor) => floor.kind === 'plate' && floor.id !== part.id && Math.abs(floor.at[2] + iso_prismSize(floor)[2] - part.at[2]) < 0.01 && iso_footprintCorners(part).every(([x, y]) => x >= floor.at[0] && x <= floor.at[0] + floor.size[0] && y >= floor.at[1] && y <= floor.at[1] + floor.size[1]));
+    if (part && part.kind !== 'plate' && (part.at[2] > 0 || supported)) {
       const contact = iso_shadowSolid(part, theme);
       contact.cls = 'surface-occlusion';
-      contact.ellipses = [contact.ellipses[1], contact.ellipses[3]];
+      contact.polygons = [];
+      const base = iso_projectedBase(part);
+      contact.ellipses = [contact.ellipses[1], { cx: base.cx, cy: base.cy, rx: base.rx * 1.15, ry: base.ry * 1.15, fill: 'url(#iso-contact-grime)' }];
       occlusion = iso_solidMarkup(contact);
     }
     return occlusion + iso_solidMarkup(solid, fit.scale);
@@ -1477,10 +1676,11 @@ export function renderSVG(scene) {
   const label = scene.title ? iso_escape(scene.title) : 'Isometric diagram';
   return '<svg xmlns="http://www.w3.org/2000/svg" class="diorama" viewBox="0 0 ' + iso_format(width) + ' ' + iso_format(height) + '"'
     + ' width="' + iso_format(width) + '" height="' + iso_format(height) + '"'
+    + ' preserveAspectRatio="xMidYMid meet"'
     + ' data-fill="' + iso_format(fit.fill) + '" role="img" aria-label="' + label + '">'
     + '<title>' + label + '</title>'
-    + iso_defs(theme)
+    + iso_defs(theme, scene.parts)
     + '<g transform="translate(' + iso_format(fit.tx) + ',' + iso_format(fit.ty) + ') scale(' + iso_format(fit.scale) + ')">'
-    + gridMarkup + floorMarkup + groundMarkup + reflections + body + labels
+    + gridMarkup + voidMarkup + floorMarkup + groundMarkup + reflections + body + labels
     + '</g></svg>';
 }

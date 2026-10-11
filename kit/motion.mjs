@@ -3,9 +3,16 @@ import { resolveFlows, sampleFlowPoint } from './scene.mjs';
 
 const motion_NS = 'http://www.w3.org/2000/svg';
 const motion_RAF = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null;
-const motion_TRAIL_SPAN = 0.22;
-const motion_TRAIL_WIDTH = 0.3;
-const motion_TRAIL_OPACITY = 0.45;
+const motion_TRAIL_SPAN = 0.19;
+const motion_TRAIL_LEAD = 0.042;
+const motion_TRAIL_WIDTH = 0.11;
+const motion_TRAIL_OPACITY = 0.55;
+const motion_LIGHT_GLOW = 0.07;
+const motion_WAVE_CYCLES = 3;
+const motion_SPARK_OFFSET = 0.075;
+const motion_PARALLAX_LERP = 0.07;
+const motion_PARALLAX_X = 6;
+const motion_PARALLAX_Y = 4;
 
 function motion_round(value) {
   return Math.round(value * 1000) / 1000;
@@ -32,12 +39,70 @@ function motion_seekTime() {
   return Number.isFinite(value) ? value : null;
 }
 
-function motion_parseScene(card) {
-  const raw = typeof card.getAttribute === 'function'
-    ? card.getAttribute('data-scene')
-    : card.dataset && card.dataset.scene;
-  if (!raw) throw new Error('mount: .card is missing data-scene');
+function motion_parseScene(world) {
+  const raw = typeof world.getAttribute === 'function'
+    ? world.getAttribute('data-scene')
+    : world.dataset && world.dataset.scene;
+  if (!raw) throw new Error('mount: .world is missing data-scene');
   return JSON.parse(raw);
+}
+
+function motion_query(search, name) {
+  if (typeof search !== 'string') return null;
+  const params = new URLSearchParams(search);
+  if (!params.has(name)) return null;
+  return params.get(name);
+}
+
+function motion_frameMode() {
+  if (typeof location === 'undefined' || !location) return false;
+  const raw = motion_query(location.search, 'frame');
+  return raw !== null && raw !== '0' && raw !== 'false';
+}
+
+export function applyFrameMode(doc) {
+  if (!motion_frameMode()) return false;
+  const body = doc && doc.body;
+  if (!body || !body.classList || typeof body.classList.add !== 'function') return false;
+  body.classList.add('frame');
+  return true;
+}
+
+export function seedParallax(svg, seek = null) {
+  if (seek !== null && seek !== undefined) return null;
+  if (motion_prefersReduced()) return null;
+  if (!svg || typeof svg.querySelector !== 'function') return null;
+  if (typeof document === 'undefined' || typeof document.createElementNS !== 'function') return null;
+  const fit = svg.querySelector('g[transform]');
+  if (!fit) return null;
+  const parent = fit.parentNode;
+  if (!parent || typeof parent.insertBefore !== 'function' || typeof parent.appendChild !== 'function') return null;
+  const wrap = document.createElementNS(motion_NS, 'g');
+  wrap.setAttribute('class', 'parallax');
+  wrap.setAttribute('transform', 'translate(0,0)');
+  parent.insertBefore(wrap, fit);
+  wrap.appendChild(fit);
+  const state = { wrap, tx: 0, ty: 0, cx: 0, cy: 0 };
+  const onMove = (event) => {
+    const width = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 1;
+    const height = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 1;
+    state.tx = ((event.clientX / width) - 0.5) * motion_PARALLAX_X * 2;
+    state.ty = ((event.clientY / height) - 0.5) * motion_PARALLAX_Y * 2;
+  };
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('mousemove', onMove);
+  }
+  state.step = () => {
+    state.cx += (state.tx - state.cx) * motion_PARALLAX_LERP;
+    state.cy += (state.ty - state.cy) * motion_PARALLAX_LERP;
+    wrap.setAttribute('transform', 'translate(' + motion_round(state.cx) + ',' + motion_round(state.cy) + ')');
+  };
+  state.stop = () => {
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('mousemove', onMove);
+    }
+  };
+  return state;
 }
 
 function motion_packetGroup(svg) {
@@ -58,27 +123,22 @@ function motion_trailGradientId(token) {
   return 'diorama-trail-' + token;
 }
 
+function motion_glowAlpha(theme) {
+  return motion_round(theme === 'dark' ? motion_TRAIL_OPACITY : motion_TRAIL_OPACITY + motion_LIGHT_GLOW);
+}
+
 function motion_seedTrailGradient(defs, token, theme) {
   const id = motion_trailGradientId(token);
-  const existing = defs.querySelector ? defs.querySelector('linearGradient[id="' + id + '"]') : null;
-  if (existing) return;
-  const color = TOKENS[theme][token] ? TOKENS[theme][token].left : TOKENS[theme].ink.left;
-  const gradient = document.createElementNS(motion_NS, 'linearGradient');
+  if (defs.querySelector && defs.querySelector('radialGradient[id="' + id + '"]')) return;
+  const gradient = document.createElementNS(motion_NS, 'radialGradient');
   gradient.setAttribute('id', id);
-  gradient.setAttribute('x1', '1');
-  gradient.setAttribute('y1', '0');
-  gradient.setAttribute('x2', '0');
-  gradient.setAttribute('y2', '0');
-  const head = document.createElementNS(motion_NS, 'stop');
-  head.setAttribute('offset', '0');
-  head.setAttribute('stop-color', color);
-  head.setAttribute('stop-opacity', String(motion_TRAIL_OPACITY));
-  const tail = document.createElementNS(motion_NS, 'stop');
-  tail.setAttribute('offset', '1');
-  tail.setAttribute('stop-color', color);
-  tail.setAttribute('stop-opacity', '0');
-  gradient.appendChild(head);
-  gradient.appendChild(tail);
+  for (const [offset, opacity] of [[0, motion_glowAlpha(theme)], [1, 0]]) {
+    const stop = document.createElementNS(motion_NS, 'stop');
+    stop.setAttribute('offset', String(offset));
+    stop.setAttribute('stop-color', TOKENS[theme][token].left);
+    stop.setAttribute('stop-opacity', String(opacity));
+    gradient.appendChild(stop);
+  }
   defs.appendChild(gradient);
 }
 
@@ -91,22 +151,49 @@ function motion_defs(svg) {
   return defs;
 }
 
-function motion_makeTrail(flowIndex, token) {
-  const trail = document.createElementNS(motion_NS, 'polygon');
+function motion_makeTrail(flowIndex, color) {
+  const trail = document.createElementNS(motion_NS, 'g');
   trail.setAttribute('class', 'packet-trail');
   trail.setAttribute('data-flow', String(flowIndex));
-  trail.setAttribute('points', '0,0');
-  trail.setAttribute('fill', 'url(#' + motion_trailGradientId(token) + ')');
+  for (let i = 0; i < 7; i += 1) {
+    const piece = document.createElementNS(motion_NS, 'polyline');
+    piece.setAttribute('class', 'packet-hot');
+    piece.setAttribute('fill', 'none');
+    piece.setAttribute('stroke', color);
+    piece.setAttribute('stroke-width', String(motion_round(motion_TRAIL_WIDTH * (1 - i / 9))));
+    piece.setAttribute('stroke-opacity', String(motion_round(motion_HOT[i])));
+    piece.setAttribute('stroke-linecap', 'round');
+    trail.appendChild(piece);
+  }
   return trail;
+}
+
+const motion_HOT = [1, 0.86, 0.69, 0.52, 0.36, 0.22, 0.1];
+
+function motion_mix(color, target, amount) {
+  return '#' + [1, 3, 5].map((offset) => Math.round(parseInt(color.slice(offset, offset + 2), 16) * (1 - amount) + target * amount).toString(16).padStart(2, '0')).join('');
+}
+
+function motion_bright(color) {
+  return motion_mix(color, 255, 0.82);
+}
+
+function motion_core(color) {
+  return motion_mix(color, 255, 0.93);
+}
+
+function motion_rim(color) {
+  return motion_mix(color, 0, 0.42);
 }
 
 function motion_makePacket(flowIndex, ring) {
   const packet = document.createElementNS(motion_NS, 'circle');
   packet.setAttribute('class', 'packet');
   packet.setAttribute('data-flow', String(flowIndex));
-  packet.setAttribute('r', '0.35');
-  packet.setAttribute('stroke', ring);
-  packet.setAttribute('stroke-width', '0.6');
+  packet.setAttribute('r', '0.215');
+  packet.setAttribute('fill', motion_core(ring));
+  packet.setAttribute('stroke', motion_rim(ring));
+  packet.setAttribute('stroke-width', '1');
   packet.setAttribute('vector-effect', 'non-scaling-stroke');
   return packet;
 }
@@ -117,18 +204,54 @@ export function seedPackets(svg, scene) {
   if (group.querySelector('circle.packet')) return group;
   const theme = scene.theme === 'dark' ? 'dark' : 'light';
   const flows = Array.isArray(scene.flows) ? scene.flows : [];
-  const ring = TOKENS[theme].ink.edge;
   const defs = motion_defs(svg);
   flows.forEach((flow, index) => {
     const count = Number.isInteger(flow.count) && flow.count > 0 ? flow.count : 0;
     const token = motion_flowToken(flow);
+    const color = TOKENS[theme][token].left;
     if (count > 0) motion_seedTrailGradient(defs, token, theme);
     for (let slot = 0; slot < count; slot += 1) {
-      group.appendChild(motion_makeTrail(index, token));
-      group.appendChild(motion_makePacket(index, ring));
+      const packet = motion_makePacket(index, color);
+      const aura = document.createElementNS(motion_NS, 'circle');
+      aura.setAttribute('class', 'packet-aura');
+      aura.setAttribute('data-flow', String(index));
+      aura.setAttribute('r', '0.56');
+      aura.setAttribute('fill', 'url(#' + motion_trailGradientId(token) + ')');
+      packet.motion_aura = aura;
+      packet.motion_sparks = [];
+      group.appendChild(motion_makeTrail(index, color));
+      group.appendChild(aura);
+      group.appendChild(packet);
+      for (let sparkIndex = 0; sparkIndex < 3; sparkIndex += 1) {
+        const spark = document.createElementNS(motion_NS, 'circle');
+        spark.setAttribute('class', 'packet-spark');
+        spark.setAttribute('data-flow', String(index));
+        spark.setAttribute('fill', motion_bright(color));
+        spark.setAttribute('r', String(0.06 + sparkIndex * 0.02));
+        packet.motion_sparks.push(spark);
+        group.appendChild(spark);
+      }
     }
   });
   return group;
+}
+
+function motion_hash(flow, slot, frame, spark) {
+  let n = Math.imul(flow + 1, 374761393) ^ Math.imul(slot + 1, 668265263) ^ Math.imul(frame, 1274126177) ^ Math.imul(spark + 1, 1597334677);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return (n ^ (n >>> 16)) >>> 0;
+}
+
+function motion_pathStops(edges) {
+  const stops = [];
+  let total = 0;
+  let previous = null;
+  for (const edge of edges) for (const point of edge.points) {
+    if (previous) total += Math.hypot(...point.map((v, i) => v - previous[i]));
+    stops.push({ point, distance: total });
+    previous = point;
+  }
+  return stops.map((stop) => ({ point: stop.point, u: total ? stop.distance / total : 0 }));
 }
 
 function motion_flowTouches(scene) {
@@ -183,12 +306,13 @@ function motion_wireInteraction(svg, scene) {
   });
 }
 
-function motion_startLoop(state) {
+function motion_startLoop(state, parallax) {
   if (!motion_RAF) return;
   let start = null;
   const frame = (timestamp) => {
     if (start === null) start = timestamp;
     tick(state.scene, state.svg, (timestamp - start) / 1000);
+    if (parallax) parallax.step();
     state.frame = motion_RAF(frame);
   };
   state.frame = motion_RAF(frame);
@@ -199,9 +323,10 @@ export function tick(scene, svgElement, timeSeconds) {
   const packets = svgElement.querySelectorAll('circle.packet');
   if (!packets || packets.length === 0) return;
   const trails = typeof svgElement.querySelectorAll === 'function'
-    ? svgElement.querySelectorAll('polygon.packet-trail')
+    ? svgElement.querySelectorAll('g.packet-trail')
     : [];
   const groups = resolveFlows(scene);
+  const glow = scene && scene.theme === 'dark' ? 1 : 1 + motion_LIGHT_GLOW;
   const byFlow = new Map();
   packets.forEach((packet) => {
     const flowIndex = Number(packet.getAttribute('data-flow'));
@@ -220,36 +345,41 @@ export function tick(scene, svgElement, timeSeconds) {
     const speed = Number.isFinite(entry.flow.speed) ? entry.flow.speed : 6;
     const loopsPerSecond = speed / 60;
     const flowTrails = trailsByFlow.get(flowIndex) || [];
+    const stops = motion_pathStops(entry.edges);
     list.forEach((packet, slot) => {
       const u = (((timeSeconds * loopsPerSecond + slot / list.length) % 1) + 1) % 1;
       const world = sampleFlowPoint(entry.edges, u);
       const [sx, sy] = project(world[0], world[1], world[2]);
       packet.setAttribute('cx', String(motion_round(sx)));
       packet.setAttribute('cy', String(motion_round(sy)));
+      if (packet.motion_aura) {
+        packet.motion_aura.setAttribute('cx', String(motion_round(sx)));
+        packet.motion_aura.setAttribute('cy', String(motion_round(sy)));
+      }
+      const ahead = sampleFlowPoint(entry.edges, Math.min(1, u + 0.01));
+      const [ax, ay] = project(ahead[0], ahead[1], ahead[2]);
+      const run = Math.hypot(ax - sx, ay - sy) || 1;
+      const nx = -(ay - sy) / run;
+      const ny = (ax - sx) / run;
+      (packet.motion_sparks || []).forEach((spark, index) => {
+        const hash = motion_hash(flowIndex, slot, Math.floor(timeSeconds * 12), index);
+        const side = hash % 2 ? 1 : -1;
+        const off = motion_SPARK_OFFSET * (1 + ((hash >>> 4) % 1000) / 999);
+        const along = (((hash >>> 14) % 1000) / 999 - 0.5) * 0.34;
+        spark.setAttribute('cx', String(motion_round(sx + nx * off * side + (ax - sx) / run * along)));
+        spark.setAttribute('cy', String(motion_round(sy + ny * off * side + (ay - sy) / run * along)));
+        spark.setAttribute('opacity', String(motion_round(0.2 + ((hash >>> 20) % 351) / 1000)));
+      });
       const trail = flowTrails[slot];
       if (!trail) return;
-      const tailParam = Math.max(0, u - motion_TRAIL_SPAN);
-      const tail = sampleFlowPoint(entry.edges, tailParam);
-      const [tx, ty] = project(tail[0], tail[1], tail[2]);
-      const dx = tx - sx;
-      const dy = ty - sy;
-      const length = Math.hypot(dx, dy);
-      if (length < 1e-4) {
-        trail.setAttribute('points', '0,0');
-        trail.setAttribute('transform', 'translate(' + motion_round(sx) + ',' + motion_round(sy) + ')');
-        return;
-      }
-      const degrees = (Math.atan2(dy, dx) * 180) / Math.PI;
-      const mid = -length / 2;
-      const shoulder = motion_TRAIL_WIDTH * 0.55;
-      trail.setAttribute('points',
-        '0,' + motion_round(-motion_TRAIL_WIDTH) +
-        ' 0,' + motion_round(motion_TRAIL_WIDTH) +
-        ' ' + motion_round(mid) + ',' + motion_round(shoulder) +
-        ' ' + motion_round(-length) + ',0' +
-        ' ' + motion_round(mid) + ',' + motion_round(-shoulder));
-      trail.setAttribute('transform',
-        'translate(' + motion_round(sx) + ',' + motion_round(sy) + ') rotate(' + motion_round(degrees) + ')');
+      Array.from(trail.children).forEach((piece, index) => {
+        const head = Math.min(1, Math.max(0, u + motion_TRAIL_LEAD - motion_TRAIL_SPAN * index / 7));
+        const tail = Math.min(1, Math.max(0, u + motion_TRAIL_LEAD - motion_TRAIL_SPAN * (index + 1) / 7));
+        const points = [sampleFlowPoint(entry.edges, tail), ...stops.filter((stop) => stop.u > tail && stop.u < head).map((stop) => stop.point), sampleFlowPoint(entry.edges, head)];
+        piece.setAttribute('points', points.map((point) => project(...point).map(motion_round).join(',')).join(' '));
+        const wave = 0.84 + 0.16 * Math.cos((u * motion_WAVE_CYCLES - index / 7) * Math.PI * 2);
+        piece.setAttribute('stroke-opacity', String(motion_round(Math.min(1, motion_HOT[index] * wave * glow))));
+      });
     });
   });
 }
@@ -259,10 +389,11 @@ export function mount(root = document) {
     if (!root || typeof root.querySelector !== 'function') {
       throw new Error('mount: invalid root');
     }
-    const card = root.querySelector('.card');
-    if (!card) throw new Error('mount: .card not found');
-    const scene = motion_parseScene(card);
-    const stage = card.querySelector('.stage');
+    applyFrameMode(root);
+    const world = root.querySelector('.world');
+    if (!world) throw new Error('mount: .world not found');
+    const scene = motion_parseScene(world);
+    const stage = world.querySelector('.stage');
     if (!stage) throw new Error('mount: .stage not found');
     let svg = stage.querySelector('svg');
     if (!svg) {
@@ -276,9 +407,11 @@ export function mount(root = document) {
       scene,
       svg,
       frame: 0,
+      parallax: null,
       stop() {
         if (motion_RAF && state.frame) cancelAnimationFrame(state.frame);
         state.frame = 0;
+        if (state.parallax) state.parallax.stop();
       }
     };
     const seek = motion_seekTime();
@@ -286,7 +419,8 @@ export function mount(root = document) {
       tick(scene, svg, seek);
       return state;
     }
-    motion_startLoop(state);
+    state.parallax = seedParallax(svg, seek);
+    motion_startLoop(state, state.parallax);
     return state;
   } catch (error) {
     console.error('diorama motion: mount failed:', error && error.message ? error.message : error);

@@ -70,20 +70,11 @@ function trailSegmentIndex(edges, u) {
 }
 
 function trailVertices(trail) {
-  const transform = trail.attrs.transform || '';
-  const move = /translate\(([-\d.]+),([-\d.]+)\)/.exec(transform);
-  const spin = /rotate\(([-\d.]+)\)/.exec(transform);
-  const tx = move ? Number(move[1]) : 0;
-  const ty = move ? Number(move[2]) : 0;
-  const angle = spin ? (Number(spin[1]) * Math.PI) / 180 : 0;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return String(trail.attrs.points || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((pair) => pair.split(',').map(Number))
-    .map(([px, py]) => [tx + px * cos - py * sin, ty + px * sin + py * cos]);
+  return trail.children.flatMap((piece) => String(piece.attrs.points || '').trim().split(/\s+/).filter(Boolean).map((pair) => pair.split(',').map(Number)));
+}
+
+function trailGeometry(trail) {
+  return JSON.stringify(trail.children.map((piece) => piece.attrs));
 }
 
 function flowScene() {
@@ -116,13 +107,13 @@ function fakeSvg(count, trailCount = 0) {
   const circles = [];
   for (let index = 0; index < count; index += 1) circles.push(fakeNode({ 'data-flow': '0' }));
   const trails = [];
-  for (let index = 0; index < trailCount; index += 1) trails.push(fakeNode({ 'data-flow': '0' }));
+  for (let index = 0; index < trailCount; index += 1) trails.push({ ...fakeNode({ 'data-flow': '0' }), children: Array.from({ length: 7 }, () => fakeNode({})) });
   return {
     circles,
     trails,
     querySelectorAll(selector) {
       if (selector === 'circle.packet') return circles;
-      if (selector === 'polygon.packet-trail') return trails;
+      if (selector === 'g.packet-trail') return trails;
       return [];
     }
   };
@@ -220,9 +211,9 @@ test('tick is deterministic: same t twice yields the same trail geometry', { ski
   const scene = flowScene();
   const svg = fakeSvg(3, 3);
   motionMod.tick(scene, svg, 1.5);
-  const first = svg.trails.map((trail) => `${trail.attrs.transform}|${trail.attrs.points}`);
+  const first = svg.trails.map((trail) => trailGeometry(trail));
   motionMod.tick(scene, svg, 1.5);
-  const second = svg.trails.map((trail) => `${trail.attrs.transform}|${trail.attrs.points}`);
+  const second = svg.trails.map((trail) => trailGeometry(trail));
   assert.deepEqual(second, first);
   assert.equal(first.length, 3);
 });
@@ -231,13 +222,13 @@ test('tick moves trail geometry between times', { skip }, () => {
   const scene = flowScene();
   const svg = fakeSvg(3, 3);
   motionMod.tick(scene, svg, 0);
-  const first = svg.trails.map((trail) => `${trail.attrs.transform}|${trail.attrs.points}`);
+  const first = svg.trails.map((trail) => trailGeometry(trail));
   motionMod.tick(scene, svg, 1.5);
-  const second = svg.trails.map((trail) => `${trail.attrs.transform}|${trail.attrs.points}`);
+  const second = svg.trails.map((trail) => trailGeometry(trail));
   assert.notDeepEqual(second, first);
   svg.trails.forEach((trail) => {
-    assert.match(trail.attrs.transform, /^translate\(/);
-    assert.match(trail.attrs.points, /^-?\d/);
+    assert.equal(trail.children.length, 7);
+    assert.match(trail.children[0].attrs.points, /^-?\d/);
   });
 });
 
@@ -264,9 +255,9 @@ test('trail stays on its segment near the path start (no wrap artifact)', { skip
         `trail vertex ${x},${y} left its segment bbox at u=${u}`
       );
     });
-    const firstPass = svg.trails.map((trail) => `${trail.attrs.transform}|${trail.attrs.points}`);
+    const firstPass = svg.trails.map((trail) => trailGeometry(trail));
     motionMod.tick(scene, svg, t);
-    const secondPass = svg.trails.map((trail) => `${trail.attrs.transform}|${trail.attrs.points}`);
+    const secondPass = svg.trails.map((trail) => trailGeometry(trail));
     assert.deepEqual(secondPass, firstPass);
   }
 });
@@ -282,6 +273,7 @@ test('reduced motion omits packet trails', { skip }, () => {
     const reducedGroup = reducedRoot.querySelector('g.packets');
     const reducedTrails = reducedGroup.children.filter((child) => child.attrs.class === 'packet-trail');
     assert.equal(reducedTrails.length, 0);
+    assert.equal(reducedGroup.children.length, 0);
 
     delete globalThis.matchMedia;
     const liveRoot = fakeRoot();
@@ -292,16 +284,108 @@ test('reduced motion omits packet trails', { skip }, () => {
     const livePackets = liveGroup.children.filter((child) => child.attrs.class === 'packet');
     assert.equal(livePackets.length, 3);
     const defs = liveRoot.querySelector('defs');
-    const gradients = defs.children.filter((child) => child.name === 'linearGradient');
+    const gradients = defs.children.filter((child) => child.name === 'radialGradient');
     assert.equal(gradients.length, 1);
     assert.equal(gradients[0].attrs.id, 'diorama-trail-green');
-    assert.equal(gradients[0].children[0].attrs['stop-opacity'], '0.45');
+    assert.equal(gradients[0].children[0].attrs['stop-opacity'], '0.62');
     assert.equal(gradients[0].children[1].attrs['stop-opacity'], '0');
   } finally {
     if (originalDocument === undefined) delete globalThis.document;
     else globalThis.document = originalDocument;
     if (originalMatchMedia === undefined) delete globalThis.matchMedia;
     else globalThis.matchMedia = originalMatchMedia;
+  }
+});
+
+function fakeParent() {
+  return {
+    children: [],
+    insertBefore(node, reference) {
+      const at = this.children.indexOf(reference);
+      if (at < 0) this.children.push(node);
+      else this.children.splice(at, 0, node);
+      return node;
+    },
+    appendChild(node) {
+      this.children.push(node);
+      return node;
+    }
+  };
+}
+
+test('parallax is disabled under reduced motion', { skip }, () => {
+  const original = globalThis.matchMedia;
+  globalThis.matchMedia = () => ({ matches: true });
+  try {
+    assert.equal(motionMod.seedParallax({ querySelector: () => ({}) }, null), null);
+  } finally {
+    if (original === undefined) delete globalThis.matchMedia;
+    else globalThis.matchMedia = original;
+  }
+});
+
+test('parallax is frozen while a ?t= seek is active', { skip }, () => {
+  assert.equal(motionMod.seedParallax({ querySelector: () => ({}) }, 2.5), null);
+});
+
+test('parallax wraps the fit group and lerps deterministically', { skip }, () => {
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  const originalMatchMedia = globalThis.matchMedia;
+  let move = null;
+  globalThis.document = { createElementNS: (namespace, name) => fakeElement(name) };
+  globalThis.window = {
+    innerWidth: 1000,
+    innerHeight: 500,
+    addEventListener(type, handler) { if (type === 'mousemove') move = handler; },
+    removeEventListener() {}
+  };
+  globalThis.matchMedia = () => ({ matches: false });
+  try {
+    const parent = fakeParent();
+    const fit = fakeNode({ transform: 'translate(1,2) scale(3)' });
+    fit.parentNode = parent;
+    parent.children.push(fit);
+    const svg = { querySelector: (selector) => (selector === 'g[transform]' ? fit : null) };
+    const parallax = motionMod.seedParallax(svg, null);
+    assert.ok(parallax, 'controller is created');
+    assert.equal(parent.children[0], parallax.wrap, 'wrapper precedes the fit group');
+    assert.equal(parallax.wrap.attrs.class, 'parallax', 'wrapper carries the parallax class');
+    assert.equal(parallax.wrap.children[0], fit, 'fit group is reparented into the wrapper');
+    move({ clientX: 1000, clientY: 0 });
+    parallax.step();
+    const first = parallax.wrap.attrs.transform;
+    parallax.step();
+    const second = parallax.wrap.attrs.transform;
+    assert.match(second, /^translate\(/);
+    assert.ok(!second.includes('NaN'), 'transform stays finite');
+    assert.notEqual(second, first, 'the world keeps easing toward the pointer');
+    parallax.step();
+    parallax.step();
+    const settled = parallax.wrap.attrs.transform;
+    assert.ok(Number(settled.match(/(-?[\d.]+),/)[1]) > 0, 'x drifts toward the pointer');
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    if (originalMatchMedia === undefined) delete globalThis.matchMedia;
+    else globalThis.matchMedia = originalMatchMedia;
+  }
+});
+
+test('frame mode toggles the body class from ?frame=1', { skip }, () => {
+  const originalLocation = globalThis.location;
+  try {
+    globalThis.location = { search: '?frame=1' };
+    const body = { classList: { added: [], add(name) { this.added.push(name); } } };
+    assert.equal(motionMod.applyFrameMode({ body }), true);
+    assert.deepEqual(body.classList.added, ['frame']);
+    globalThis.location = { search: '?t=2' };
+    assert.equal(motionMod.applyFrameMode({ body }), false);
+  } finally {
+    if (originalLocation === undefined) delete globalThis.location;
+    else globalThis.location = originalLocation;
   }
 });
 
@@ -315,5 +399,72 @@ test('mount fails silently and returns null on an unexpected DOM', { skip }, () 
     assert.equal(logged, true);
   } finally {
     console.error = original;
+  }
+});
+
+test('electric pulses seed aura, bright core, seven hot strokes and three sparks per packet', { skip }, () => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { createElementNS: (namespace, name) => fakeElement(name) };
+  try {
+    const root = fakeRoot();
+    const scene = flowScene();
+    motionMod.seedPackets(root, scene);
+    const group = root.querySelector('g.packets');
+    const select = (cls) => group.children.filter((node) => node.attrs.class === cls);
+    assert.equal(select('packet').length, 3);
+    assert.equal(select('packet-aura').length, 3);
+    assert.equal(select('packet-spark').length, 9);
+    assert.equal(select('packet-trail').length, 3);
+    for (const trail of select('packet-trail')) {
+      assert.equal(trail.children.length, 7);
+      assert.equal(trail.children[0].attrs['stroke-opacity'], '1');
+      assert.equal(trail.children[6].attrs['stroke-opacity'], '0.1');
+      assert.ok(trail.children.every((piece) => piece.name === 'polyline'));
+    }
+    root.querySelectorAll = (selector) => select(selector.split('.')[1]);
+    motionMod.tick(scene, root, 0.25);
+    const first = JSON.stringify(group.children);
+    motionMod.tick(scene, root, 0.25);
+    assert.equal(JSON.stringify(group.children), first);
+    for (const packet of select('packet')) {
+      assert.equal(packet.attrs.cx, packet.motion_aura.attrs.cx);
+      assert.equal(packet.attrs.cy, packet.motion_aura.attrs.cy);
+      assert.equal(packet.attrs.r, '0.215');
+      assert.notEqual(packet.attrs.fill, packet.attrs.stroke);
+    }
+    for (const spark of select('packet-spark')) assert.ok(Number(spark.attrs.opacity) <= 0.55);
+    motionMod.tick(scene, root, 0.5);
+    assert.notEqual(JSON.stringify(group.children), first);
+    motionMod.seedPackets(root, scene);
+    assert.equal(select('packet').length, 3);
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
+});
+
+test('hot strokes stay on the sampled cable including the first fifth of the path', { skip }, () => {
+  const scene = flowScene();
+  scene.links[0].kind = 'cable';
+  scene.flows[0].count = 1;
+  const edges = sceneMod.resolveFlows(scene)[0].edges;
+  const path = edges.flatMap((edge) => edge.points.map((point) => isoMod.project(...point)));
+  const minX = Math.min(...path.map((p) => p[0])) - 0.001;
+  const maxX = Math.max(...path.map((p) => p[0])) + 0.001;
+  const minY = Math.min(...path.map((p) => p[1])) - 0.001;
+  const maxY = Math.max(...path.map((p) => p[1])) + 0.001;
+  for (const u of [0, 0.01, 0.05, 0.19, 0.5, 0.95]) {
+    const svg = fakeSvg(1, 1);
+    motionMod.tick(scene, svg, u * 5);
+    for (const [x, y] of trailVertices(svg.trails[0])) {
+      assert.ok(x >= minX && x <= maxX && y >= minY && y <= maxY);
+      const distance = Math.min(...path.slice(1).map((b, i) => {
+        const a = path[i];
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
+        return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
+      }));
+      assert.ok(distance < 0.001);
+    }
   }
 });
