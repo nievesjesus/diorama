@@ -26,3 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Links: connectors, collars, plugs and cable ties terminate tubes and cables.
 - Flows: tapered motion trails follow each runtime packet, fading from the packet color, and are omitted under `prefers-reduced-motion`.
 - Labels: sublabel chips add a second caption line under a part label.
+- WebGL world renderer: `--webgl` also writes `world.html`, the same scene as a three.js world (three.js r169 vendored inline, so the page stays standalone and offline).
+- Industrial environments, `warehouse` and `city`, picked by an auto heuristic — city when parts `>= 18`, total footprint `>= 260 u²` or spread `>= 46 u`, warehouse otherwise — and overridable with `?env=warehouse|city|auto`.
+- Procedural road network with deterministic termini: edge gates, cul-de-sacs, loading bays and driveways, plus a `validateNetwork` layout check for orphaned corridors and unclassified ends.
+- Camera modes: orbit (drag to orbit, scroll to zoom), top-down (`?cam=top`) and first person (`?cam=fp` or `V`), with `?focus=<id>&fill=<n>` to frame one part.
+- `--webgl` build flag on `build.mjs` and `scripts/build-examples.mjs`.
+
+### Changed
+
+- SVG packet sparks and hot trails are now sine-wave based: a smooth traveling wave with a pulsing alpha, no hash jitter.
+- `capture.mjs` supports WebGL pages: SwiftShader GL flags plus a `--budget` (default 10000) so `world.html` paints before the shot.

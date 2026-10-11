@@ -19,13 +19,13 @@ Almost every architecture diagram is a box with a label, and it drifts from the 
 
 ## Gallery
 
-[![three-tier web (light) — nginx, two API replicas, Postgres and Redis behind a queue-fed worker](.github/assets/gallery-three-tier-web.png)](examples/three-tier-web/index.html)
+[![three-tier web (light) — nginx, two API replicas, Postgres and Redis behind a queue-fed worker](.github/assets/gallery-three-tier-web.png)](examples/three-tier-web/world.html)
 
-[![kafka (dark) — three partitions, two consumer groups, DLQ](.github/assets/gallery-kafka.png)](examples/kafka-pipeline/index.html)
+[![kafka (dark) — three partitions, two consumer groups, DLQ](.github/assets/gallery-kafka.png)](examples/kafka-pipeline/world.html)
 
-[![k8s (light) — three replicas delivered by CI](.github/assets/gallery-k8s.png)](examples/k8s-ci/index.html)
+[![k8s (light) — three replicas delivered by CI](.github/assets/gallery-k8s.png)](examples/k8s-ci/world.html)
 
-Every page is a full-bleed animated world in one self-contained HTML file; open one, hover to trace links, append `?t=2.5` to freeze a frame, `?frame=1` for a framed embed.
+Each example ships two self-contained pages: `index.html`, the SVG figure, where hovering a part traces its links, and `world.html`, the same scene as a three.js WebGL world you can drag to orbit, scroll to zoom, double-click to focus a part, and walk in first person with `V`. Both freeze a frame with `?t=<seconds>`; the world adds `?cam=orbit|top|fp`, `?env=warehouse|city`, `?focus=<id>` and `?debug=1`, and the SVG page takes `?frame=1` for a framed embed. Everything is inlined — three.js r169 is vendored into `world.html` — so each page is standalone and offline.
 
 ## Install
 
@@ -103,6 +103,12 @@ diorama/
 │   ├── scene.mjs             scene spec v1 parsing and normalization
 │   ├── motion.mjs            flow animation and seek
 │   └── audit.mjs             the geometry audit
+├── world/
+│   ├── scene3d.mjs           environments, road network and the three.js world model
+│   ├── runtime.mjs           WebGL renderer, orbit and first-person camera, interaction
+│   ├── bundle.mjs            deterministic ES-module concatenator for world.html
+│   ├── world.css             the WebGL page's own layer over the shared HUD
+│   └── vendor/               three.js r169, vendored (no npm install)
 ├── scripts/
 │   ├── build-examples.mjs    rebuild every example
 │   ├── capture.mjs           headless screenshots with zoom and time seek
@@ -111,7 +117,7 @@ diorama/
 │   ├── craft.md              how to compose a figure worth shipping
 │   ├── verify.md             what to check before publishing
 │   └── compose.md            drafting a scene from docker-compose
-├── examples/                 three scenes, each scene.json + index.html + index.svg
+├── examples/                 three scenes, each scene.json + index.html (SVG) + world.html (WebGL) + index.svg
 ├── evals/evals.json          test prompts and what a good answer contains
 ├── .github/
 │   ├── workflows/ci.yml      tests, build and audit on every change

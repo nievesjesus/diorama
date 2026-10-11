@@ -59,8 +59,9 @@ mechanical geometry audit before it ships.
 6. **Deliver.** The build emits a standalone HTML file that works from a double-click, with no
    network and no external assets: it renders as a full-bleed animated world — a floating slab in
    an atmospheric void under a glass HUD. Hover to trace links; append `?t=<seconds>` to freeze a
-   frame and `?frame=1` for a framed embed. Add `--svg out.svg` for a lone static SVG, or capture
-   a PNG. Produce both themes when asked.
+   frame and `?frame=1` for a framed embed. Add `--webgl` and the build also writes `world.html`,
+   the same scene as a three.js WebGL world beside the SVG `index.html`. Add `--svg out.svg` for a
+   lone static SVG, or capture a PNG. Produce both themes when asked.
 
 ## Quickstart from docker-compose
 
@@ -74,20 +75,22 @@ build and audit as above.
 ## Commands
 
 ```sh
-node build.mjs <scene.json> [--theme light|dark] [--svg out.svg] [--audit] [-o out.html]
+node build.mjs <scene.json> [--theme light|dark] [--svg out.svg] [--webgl] [--audit] [-o out.html]
 node scripts/capture.mjs <page.html> <out.png> [--t seconds] [--w cssW] [--h cssH] [--zoom 2]
 node kit/audit.mjs <scene.json>
-node scripts/build-examples.mjs
+node scripts/build-examples.mjs [--svg] [--webgl] [--audit] [--theme light|dark]
 ```
 
 ## Requirements
 
 - **Node 20.10+.** Built-ins only: nothing to `npm install`.
 - **Chrome or Chromium** for the capture check (found automatically, or set `CHROME_PATH`).
+- **No three.js install.** `world.html` inlines three.js r169, so both pages stay standalone and offline.
 
 ## Limits
 
 - Draws systems and machines, not people or maps.
+- The WebGL `world.html` needs a WebGL-capable browser; the SVG `index.html` does not.
 - Slow on purpose: a real figure is a real session — name the parts, lay out the world, build,
   audit, and look.
 - React/framework output is roadmap; the deliverable today is standalone HTML.
