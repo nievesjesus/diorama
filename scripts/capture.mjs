@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 
 export function usageText() {
   return [
-    'Usage: node scripts/capture.mjs <file-or-url> <out.png> [--t 2.5] [--w 1280] [--h 960] [--zoom 2]',
+    'Usage: node scripts/capture.mjs <file-or-url> <out.png> [--t 2.5] [--w 1280] [--h 960] [--zoom 2] [--budget 10000]',
     '',
     'Render a diorama page to a deterministic PNG using headless Chrome.',
     'A file path is converted to a file:// URL; http(s) and file URLs pass through.',
@@ -14,6 +14,8 @@ export function usageText() {
     '--w/--h set the CSS viewport (window-size is always W,H).',
     '--zoom sets the device scale factor, so the PNG is W*zoom x H*zoom',
     'with the same CSS layout as a 1x run (default 2 for Retina-sharp shots).',
+    '--budget sets the virtual time budget in milliseconds (default 10000),',
+    'long enough for WebGL pages to paint before the compositor commits.',
     '',
     'Chrome discovery order: $CHROME_PATH, then the platform install paths,',
     'then the Playwright browser cache.',
@@ -28,7 +30,7 @@ export function usageText() {
 }
 
 export function parseArgs(argv) {
-  const options = { input: null, out: null, t: null, width: 1280, height: 960, zoom: 2, help: false };
+  const options = { input: null, out: null, t: null, width: 1280, height: 960, zoom: 2, budget: 10000, help: false };
   const args = [...argv];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -45,6 +47,9 @@ export function parseArgs(argv) {
       index += 1;
     } else if (arg === '--zoom') {
       options.zoom = Number(args[index + 1]);
+      index += 1;
+    } else if (arg === '--budget') {
+      options.budget = Number(args[index + 1]);
       index += 1;
     } else if (arg.startsWith('-') && arg !== '-') {
       throw new Error(`Unknown option: ${arg}`);
@@ -147,16 +152,18 @@ export function pageUrl(input, t) {
   return `${base}${separator}t=${encodeURIComponent(String(t))}`;
 }
 
-export function chromeArgs({ url, out, width = 1280, height = 960, zoom = 2 }) {
+export function chromeArgs({ url, out, width = 1280, height = 960, zoom = 2, budget = 10000 }) {
   return [
     '--headless=new',
-    '--disable-gpu',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
     '--hide-scrollbars',
     '--force-color-profile=srgb',
     `--window-size=${Math.round(width)},${Math.round(height)}`,
     `--force-device-scale-factor=${zoom}`,
     `--screenshot=${out}`,
-    '--virtual-time-budget=3000',
+    `--virtual-time-budget=${budget}`,
     '--default-background-color=ffffffff',
     url,
   ];
@@ -197,7 +204,7 @@ async function main() {
 
   const result = spawnSync(
     chrome,
-    chromeArgs({ url, out: outPath, width: options.width, height: options.height, zoom: options.zoom }),
+    chromeArgs({ url, out: outPath, width: options.width, height: options.height, zoom: options.zoom, budget: options.budget }),
     { stdio: 'inherit' },
   );
   if (result.error) {

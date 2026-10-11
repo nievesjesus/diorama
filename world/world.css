@@ -1,0 +1,46 @@
+/* world/world.css — the WebGL page's own layer, appended after kit/iso.css.
+   The HUD classes (.hud, .readout, .hint, .wordmark, .corner) are reused as-is
+   so the SVG page and the WebGL page read as the same product. */
+
+body.world-page .stage {
+  cursor: grab;
+}
+
+body.world-page .stage:active {
+  cursor: grabbing;
+}
+
+.world-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+.world-stats {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  font-family: var(--iso-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+body.world-page .hint {
+  max-width: 48ch;
+}
+
+body.world-page .hud {
+  pointer-events: none;
+}
+
+body.world-page .hud a {
+  pointer-events: auto;
+}

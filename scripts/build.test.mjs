@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -14,6 +14,11 @@ import {
   escapeAttribute,
   stripKitImports,
   bundleModules,
+  defaultWorldDir,
+  worldFilePaths,
+  missingWorldFiles,
+  escapeJsonScript,
+  renderWorldHtml,
   renderReadout,
   renderHtml,
   kitFilePaths,
@@ -41,6 +46,8 @@ test('parseArgs defaults', () => {
     out: null,
     theme: null,
     svg: null,
+    webgl: false,
+    webglOut: null,
     audit: false,
     titleOverride: null,
     help: false,
@@ -194,4 +201,95 @@ test('cli: missing kit exits 2 with a clear message', () => {
   });
   assert.equal(result.status, 2);
   assert.ok(result.stderr.includes('kit not ready'));
+});
+
+test('parseArgs reads the webgl flags', () => {
+  assert.equal(parseArgs(['scene.json', '--webgl']).webgl, true);
+  const explicit = parseArgs(['scene.json', '--webgl-out', 'world.html']);
+  assert.equal(explicit.webgl, true, '--webgl-out implies --webgl');
+  assert.equal(explicit.webglOut, 'world.html');
+  assert.equal(parseArgs(['scene.json']).webgl, false);
+});
+
+test('usageText documents the webgl output', () => {
+  const text = usageText();
+  assert.ok(text.includes('--webgl'));
+  assert.ok(text.includes('world.html'));
+});
+
+test('worldFilePaths covers three, the addons, the runtime and the css', () => {
+  const paths = worldFilePaths('/world');
+  const values = Object.values(paths);
+  assert.ok(values.some((path) => path.endsWith('three.module.js')));
+  assert.ok(values.some((path) => path.endsWith('OrbitControls.js')));
+  assert.ok(values.some((path) => path.endsWith('UnrealBloomPass.js')));
+  assert.ok(values.some((path) => path.endsWith('scene3d.mjs')));
+  assert.ok(values.some((path) => path.endsWith('runtime.mjs')));
+  assert.ok(values.some((path) => path.endsWith('world.css')));
+});
+
+test('missingWorldFiles reports every absent asset', () => {
+  assert.deepEqual(missingWorldFiles(defaultWorldDir()), [], 'the repo ships a complete world/');
+  const missing = missingWorldFiles('/nowhere', () => false);
+  assert.equal(missing.length, Object.keys(worldFilePaths('/nowhere')).length);
+});
+
+test('escapeJsonScript neutralises a closing script tag', () => {
+  const escaped = escapeJsonScript({ note: '</script><img onerror=1>' });
+  assert.equal(escaped.includes('</script>'), false);
+  assert.equal(escaped.includes('\\u003c/script>'), true);
+  assert.deepEqual(JSON.parse(escaped), { note: '</script><img onerror=1>' });
+});
+
+test('renderWorldHtml inlines the scene JSON, the css and the bundle', () => {
+  const html = renderWorldHtml({
+    scene: { title: 'T', subtitle: 'S', theme: 'dark', readout: [{ label: 'a', value: 'b' }] },
+    css: '.x{}',
+    runtime: 'world_mount();',
+  });
+  assert.ok(html.startsWith('<!doctype html>'));
+  assert.ok(html.includes('class="theme-dark world-page"'));
+  assert.ok(html.includes('<div class="stage"></div>'));
+  assert.ok(html.includes('<script type="application/json" id="world-scene">'));
+  assert.ok(html.includes('world_mount();'));
+  assert.ok(html.includes('.x{}'));
+  // The HUD markup is shared with the SVG page.
+  assert.ok(html.includes('class="readout-label"'));
+  assert.ok(html.includes('<div class="wordmark">diorama</div>'));
+});
+
+test('build --webgl writes a self-contained world page next to the scene', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'diorama-world-'));
+  const input = join(dir, 'scene.json');
+  writeFileSync(input, JSON.stringify({
+    version: 1,
+    title: 'World build',
+    theme: 'light',
+    parts: [
+      { id: 'ground', kind: 'plate', at: [0, 0, 0], size: [12, 12, 0.3], color: 'slate', detail: 'concrete' },
+      { id: 'a', kind: 'box', at: [2, 2, 0.3], size: [2, 2, 2], color: 'blue', label: 'A' },
+      { id: 'b', kind: 'box', at: [7, 7, 0.3], size: [2, 2, 2], color: 'green' },
+    ],
+    links: [{ from: 'a', to: 'b', kind: 'tube', color: 'blue' }],
+  }));
+  const result = await build({ input, webgl: true });
+  assert.equal(result.code, 0);
+  const worldPath = join(dir, 'world.html');
+  assert.ok(result.outputs.includes(worldPath));
+  const html = readFileSync(worldPath, 'utf8');
+  assert.ok(html.includes('class WebGLRenderer'), 'three.js is inlined');
+  assert.ok(html.includes('function world_mount('), 'the runtime is inlined');
+  assert.ok(html.includes('"title":"World build"'), 'the scene is inlined');
+  // Self-contained: nothing is fetched at runtime.
+  assert.equal(/<script[^>]*\ssrc=/.test(html), false);
+  assert.equal(/<link[^>]*rel="stylesheet"/.test(html), false);
+});
+
+test('build --webgl reports a missing world directory', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'diorama-world-missing-'));
+  const input = join(dir, 'scene.json');
+  writeFileSync(input, JSON.stringify({ version: 1, title: 'x', theme: 'light', parts: [] }));
+  const result = await build({ input, webgl: true, worldDir: join(dir, 'nope') });
+  assert.equal(result.code, 2);
+  assert.match(result.message, /world not ready/);
 });

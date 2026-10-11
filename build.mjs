@@ -2,6 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { addonOrder, bundleWebgl, moduleOrder } from './world/bundle.mjs';
+
 const RELATIVE_IMPORT = /^\s*import\s.+from\s+['"]\.\/.+['"];?\s*$/;
 const RELATIVE_REEXPORT = /^\s*export\s+.*\s+from\s+['"]\.\/.+['"];?\s*$/;
 const RELATIVE_SIDE_EFFECT = /^\s*import\s+['"]\.\/.+['"];?\s*$/;
@@ -12,7 +14,7 @@ export function defaultKitDir() {
 
 export function usageText() {
   return [
-    'Usage: node build.mjs <scene.json> [-o out.html] [--theme light|dark] [--svg out.svg] [--audit] [--title-override str]',
+    'Usage: node build.mjs <scene.json> [-o out.html] [--theme light|dark] [--svg out.svg] [--webgl] [--audit] [--title-override str]',
     '',
     'Build a standalone, dependency-free HTML diorama from a scene JSON file.',
     'The emitted HTML inlines the iso/scene/motion runtime and works from file://',
@@ -22,6 +24,9 @@ export function usageText() {
     '  -o, --out <file>        Output HTML path (default: <scene dir>/index.html)',
     '      --theme <name>      Force light or dark theme (overrides the scene)',
     '      --svg <file>        Also write a standalone static SVG (no runtime)',
+    '      --webgl             Also write a three.js world page (default:',
+    '                          <scene dir>/world.html)',
+    '      --webgl-out <file>  Output path for the world page',
     '      --audit             Run kit/audit.mjs and fail on violations',
     '      --title-override <s> Override the scene title in the output',
     '  -h, --help              Show this help and exit',
@@ -30,7 +35,8 @@ export function usageText() {
     '  0  success',
     '  1  scene validation or audit failure',
     '  2  usage error, or kit not ready (kit/iso.mjs, kit/iso.css,',
-    '     kit/scene.mjs or kit/motion.mjs is missing)',
+    '     kit/scene.mjs or kit/motion.mjs is missing), or the world assets',
+    '     under world/ are missing while --webgl is set',
     '',
   ].join('\n');
 }
@@ -41,6 +47,8 @@ export function parseArgs(argv) {
     out: null,
     theme: null,
     svg: null,
+    webgl: false,
+    webglOut: null,
     audit: false,
     titleOverride: null,
     help: false,
@@ -58,6 +66,12 @@ export function parseArgs(argv) {
       index += 1;
     } else if (arg === '--svg') {
       options.svg = args[index + 1];
+      index += 1;
+    } else if (arg === '--webgl') {
+      options.webgl = true;
+    } else if (arg === '--webgl-out') {
+      options.webglOut = args[index + 1];
+      options.webgl = true;
       index += 1;
     } else if (arg === '--audit') {
       options.audit = true;
@@ -188,6 +202,87 @@ export function missingKitFiles(kitDir, exists = existsSync) {
   return Object.values(kitFilePaths(kitDir)).filter((path) => !exists(path));
 }
 
+export function defaultWorldDir() {
+  return join(dirname(fileURLToPath(import.meta.url)), 'world');
+}
+
+export function worldFilePaths(worldDir) {
+  const paths = {
+    three: join(worldDir, 'vendor', 'three', 'three.module.js'),
+    css: join(worldDir, 'world.css'),
+  };
+  for (const relative of addonOrder()) paths[relative] = join(worldDir, 'vendor', relative);
+  for (const relative of moduleOrder()) paths[relative] = join(worldDir, relative);
+  return paths;
+}
+
+export function missingWorldFiles(worldDir, exists = existsSync) {
+  return Object.values(worldFilePaths(worldDir)).filter((path) => !exists(path));
+}
+
+/** Read world/ off disk and produce the single inlined <script> body. */
+export function worldRuntime(worldDir, read = readFileSync) {
+  return bundleWebgl({
+    three: read(join(worldDir, 'vendor', 'three', 'three.module.js'), 'utf8'),
+    addons: addonOrder().map((relative) => ({
+      name: relative,
+      source: read(join(worldDir, 'vendor', relative), 'utf8'),
+    })),
+    modules: moduleOrder().map((relative) => ({
+      name: `world/${relative}`,
+      source: read(join(worldDir, relative), 'utf8'),
+    })),
+  });
+}
+
+/** JSON inlined in a <script type="application/json"> must not close the tag. */
+export function escapeJsonScript(value) {
+  return stableStringify(value).replace(/</g, '\\u003c').replace(/\u2028|\u2029/g, (char) =>
+    char === '\u2028' ? '\\u2028' : '\\u2029');
+}
+
+export function renderWorldHtml({ scene, css, runtime }) {
+  const theme = scene.theme === 'dark' ? 'dark' : 'light';
+  const title = escapeText(scene.title ?? '');
+  const subtitle = escapeText(scene.subtitle ?? '');
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    `<title>${title}</title>`,
+    '<style>',
+    css,
+    '</style>',
+    '</head>',
+    `<body class="theme-${theme} world-page">`,
+    '<div class="world">',
+    '<div class="stage"></div>',
+    '<div class="hud">',
+    '<div class="hud-title">',
+    `<h1>${title}</h1>`,
+    `<p class="subtitle">${subtitle}</p>`,
+    '</div>',
+    renderReadout(scene.readout),
+    '<p class="hint"></p>',
+    '<div class="wordmark">diorama</div>',
+    '<span class="corner tl"></span>',
+    '<span class="corner tr"></span>',
+    '<span class="corner bl"></span>',
+    '<span class="corner br"></span>',
+    '</div>',
+    '</div>',
+    `<script type="application/json" id="world-scene">${escapeJsonScript(scene)}</script>`,
+    '<script type="module">',
+    runtime,
+    '</script>',
+    '</body>',
+    '</html>',
+    '',
+  ].join('\n');
+}
+
 export function auditViolations(auditModule, scene) {
   const audit = auditModule.audit ?? auditModule.default;
   if (typeof audit !== 'function') throw new Error('kit/audit.mjs does not export an audit function');
@@ -231,6 +326,14 @@ export async function build(options, env = process.env) {
       code: 2,
       message: `kit not ready: missing ${missing.join(', ')}. See --help.`,
     };
+  }
+
+  const worldDir = options.worldDir ?? env.DIORAMA_WORLD_DIR ?? defaultWorldDir();
+  if (options.webgl) {
+    const missingWorld = missingWorldFiles(worldDir);
+    if (missingWorld.length) {
+      return { code: 2, message: `world not ready: missing ${missingWorld.join(', ')}. See --help.` };
+    }
   }
 
   let scene;
@@ -278,6 +381,19 @@ export async function build(options, env = process.env) {
   const html = renderHtml({ scene, svg, css, runtime });
   writeFileSync(outPath, html);
   outputs.push(outPath);
+
+  if (options.webgl) {
+    const worldOut = options.webglOut
+      ? options.webglOut
+      : join(dirname(resolve(options.input)), 'world.html');
+    const worldHtml = renderWorldHtml({
+      scene,
+      css: `${css}\n${readFileSync(join(worldDir, 'world.css'), 'utf8')}`,
+      runtime: worldRuntime(worldDir),
+    });
+    writeFileSync(worldOut, worldHtml);
+    outputs.push(worldOut);
+  }
 
   return { code: 0, outputs, scene };
 }

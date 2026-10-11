@@ -21,10 +21,11 @@ export function listExampleScenes(examplesDir, { readdir = readdirSync, exists =
 
 export function usageText() {
   return [
-    'Usage: node scripts/build-examples.mjs [--svg] [--audit] [--theme light|dark]',
+    'Usage: node scripts/build-examples.mjs [--svg] [--webgl] [--audit] [--theme light|dark]',
     '',
     'Build every examples/<name>/scene.json into examples/<name>/index.html.',
-    'With --svg, also write examples/<name>/index.svg. Skips gracefully when no',
+    'With --svg, also write examples/<name>/index.svg; with --webgl, also write',
+    'examples/<name>/world.html (the three.js page). Skips gracefully when no',
     'examples are present and exits 0.',
     '',
   ].join('\n');
@@ -37,6 +38,7 @@ async function main() {
     return;
   }
   const withSvg = args.includes('--svg');
+  const withWebgl = args.includes('--webgl');
   const audit = args.includes('--audit');
   const themeIndex = args.indexOf('--theme');
   const theme = themeIndex >= 0 ? args[themeIndex + 1] : null;
@@ -55,12 +57,12 @@ async function main() {
     const input = join(dir, 'scene.json');
     const out = join(dir, 'index.html');
     const svg = withSvg ? join(dir, 'index.svg') : null;
-    const result = await build({ input, out, svg, theme, audit });
+    const result = await build({ input, out, svg, theme, audit, webgl: withWebgl });
     if (result.code !== 0) {
       process.stderr.write(`${dir}: ${result.message}\n`);
       failures += 1;
     } else {
-      process.stdout.write(`built ${out}${svg ? ` and ${svg}` : ''}\n`);
+      process.stdout.write(`built ${result.outputs.join(' and ')}\n`);
     }
   }
   if (failures) process.exitCode = 1;

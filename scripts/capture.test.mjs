@@ -13,13 +13,14 @@ import {
 } from './capture.mjs';
 
 test('parseArgs reads positionals and numeric flags', () => {
-  const options = parseArgs(['page.html', 'shot.png', '--t', '2.5', '--w', '800', '--h', '600', '--zoom', '3']);
+  const options = parseArgs(['page.html', 'shot.png', '--t', '2.5', '--w', '800', '--h', '600', '--zoom', '3', '--budget', '5000']);
   assert.equal(options.input, 'page.html');
   assert.equal(options.out, 'shot.png');
   assert.equal(options.t, '2.5');
   assert.equal(options.width, 800);
   assert.equal(options.height, 600);
   assert.equal(options.zoom, 3);
+  assert.equal(options.budget, 5000);
 });
 
 test('parseArgs defaults and help', () => {
@@ -29,6 +30,7 @@ test('parseArgs defaults and help', () => {
   assert.equal(options.width, 1280);
   assert.equal(options.height, 960);
   assert.equal(options.zoom, 2);
+  assert.equal(options.budget, 10000);
 });
 
 test('parseArgs rejects unknown options', () => {
@@ -136,19 +138,28 @@ test('pageUrl treats a windows drive path as a file', () => {
   assert.ok(url.startsWith('file://'));
 });
 
-test('chromeArgs is fully headless and uses the CSS viewport with a device scale factor', () => {
+test('chromeArgs is fully headless, keeps the software GL path, and uses the CSS viewport with a device scale factor', () => {
   const args = chromeArgs({ url: 'file:///x?t=1', out: 'out.png', width: 1280, height: 960, zoom: 2 });
   assert.ok(args.includes('--headless=new'));
-  assert.ok(args.includes('--disable-gpu'));
+  assert.ok(args.includes('--use-gl=angle'));
+  assert.ok(args.includes('--use-angle=swiftshader'));
+  assert.ok(args.includes('--enable-unsafe-swiftshader'));
+  assert.ok(!args.includes('--disable-gpu'));
   assert.ok(args.includes('--hide-scrollbars'));
   assert.ok(args.includes('--force-color-profile=srgb'));
   assert.ok(args.includes('--window-size=1280,960'));
   assert.ok(args.includes('--force-device-scale-factor=2'));
   assert.ok(!args.includes('--window-size=2560,1920'));
   assert.ok(args.includes('--screenshot=out.png'));
-  assert.ok(args.includes('--virtual-time-budget=3000'));
+  assert.ok(args.includes('--virtual-time-budget=10000'));
   assert.ok(args.includes('--default-background-color=ffffffff'));
   assert.equal(args[args.length - 1], 'file:///x?t=1');
+});
+
+test('chromeArgs honors a custom virtual time budget', () => {
+  const args = chromeArgs({ url: 'file:///x', out: 'out.png', budget: 5000 });
+  assert.ok(args.includes('--virtual-time-budget=5000'));
+  assert.ok(!args.includes('--virtual-time-budget=10000'));
 });
 
 test('chromeArgs keeps the CSS viewport fixed and emits the matching scale factor', () => {
@@ -163,6 +174,7 @@ test('chromeArgs keeps the CSS viewport fixed and emits the matching scale facto
 test('usageText documents usage and exit codes', () => {
   const text = usageText();
   assert.ok(text.includes('Usage: node scripts/capture.mjs'));
+  assert.ok(text.includes('--budget 10000'));
   assert.ok(text.includes('CHROME_PATH'));
   assert.ok(text.includes('3  no Chrome/Chromium binary found'));
 });
