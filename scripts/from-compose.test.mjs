@@ -184,6 +184,20 @@ test('longestDependsPath breaks and picks deterministically', () => {
   assert.deepEqual(longestDependsPath(services, tiers), ['a', 'b']);
 });
 
+test('order tie-breaks by code unit, not locale collation', () => {
+  const services = {
+    Zeta: { name: 'Zeta', dependsOn: [], replicas: 1, networks: [], image: null, ports: [] },
+    alpha: { name: 'alpha', dependsOn: [], replicas: 1, networks: [], image: null, ports: [] },
+  };
+  const tiers = computeTiers(services);
+  assert.deepEqual(longestDependsPath(services, tiers), ['Zeta']);
+  const first = composeToScene(services, { title: 'Order' });
+  const second = composeToScene(services, { title: 'Order' });
+  assert.deepEqual(first.flows[0].path, ['Zeta', 'alpha']);
+  assert.deepEqual(second.flows[0].path, ['Zeta', 'alpha']);
+  assert.equal(JSON.stringify(first), JSON.stringify(second));
+});
+
 test('deterministic output: two runs are byte identical', () => {
   const first = JSON.stringify(sceneFor('web-stack.yml', { title: 'Web Stack' }), null, 2);
   const second = JSON.stringify(sceneFor('web-stack.yml', { title: 'Web Stack' }), null, 2);

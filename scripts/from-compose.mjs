@@ -373,6 +373,10 @@ export function layoutServices(services, tiers) {
   return positions;
 }
 
+function compareCodeUnits(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function compareSeq(a, b) {
   const left = a.join('\u0000');
   const right = b.join('\u0000');
@@ -383,7 +387,7 @@ function compareSeq(a, b) {
 
 export function longestDependsPath(services, tiers) {
   const names = Object.keys(services).sort();
-  const order = names.slice().sort((a, b) => (tiers[a] - tiers[b]) || a.localeCompare(b));
+  const order = names.slice().sort((a, b) => (tiers[a] - tiers[b]) || compareCodeUnits(a, b));
   const best = {};
   for (const name of order) {
     let bestPath = [name];
@@ -511,7 +515,7 @@ export function composeToScene(services, options = {}) {
   } else {
     const tierZero = names.filter((name) => (tiers[name] || 0) === 0);
     if (tierZero.length >= 2) {
-      const byX = tierZero.slice().sort((a, b) => (positions[a][0] - positions[b][0]) || a.localeCompare(b));
+      const byX = tierZero.slice().sort((a, b) => (positions[a][0] - positions[b][0]) || compareCodeUnits(a, b));
       flowPath = [byX[0], byX[byX.length - 1]];
     }
   }
