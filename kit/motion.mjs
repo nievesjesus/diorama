@@ -9,7 +9,14 @@ const motion_TRAIL_WIDTH = 0.11;
 const motion_TRAIL_OPACITY = 0.55;
 const motion_LIGHT_GLOW = 0.07;
 const motion_WAVE_CYCLES = 3;
-const motion_SPARK_OFFSET = 0.075;
+const motion_SPARK_NORMAL_BASE = 0.08;
+const motion_SPARK_NORMAL_WAVE = 0.06;
+const motion_SPARK_ALONG_WAVE = 0.05;
+const motion_SPARK_ALPHA = 0.5;
+const motion_SPARK_ALPHA_MAX = 0.55;
+const motion_HOT_SAMPLES = 8;
+const motion_HOT_WAVE_MIN = 0.92;
+const motion_HOT_WAVE_AMP = 0.08;
 const motion_PARALLAX_LERP = 0.07;
 const motion_PARALLAX_X = 6;
 const motion_PARALLAX_Y = 4;
@@ -236,24 +243,6 @@ export function seedPackets(svg, scene) {
   return group;
 }
 
-function motion_hash(flow, slot, frame, spark) {
-  let n = Math.imul(flow + 1, 374761393) ^ Math.imul(slot + 1, 668265263) ^ Math.imul(frame, 1274126177) ^ Math.imul(spark + 1, 1597334677);
-  n = Math.imul(n ^ (n >>> 13), 1274126177);
-  return (n ^ (n >>> 16)) >>> 0;
-}
-
-function motion_pathStops(edges) {
-  const stops = [];
-  let total = 0;
-  let previous = null;
-  for (const edge of edges) for (const point of edge.points) {
-    if (previous) total += Math.hypot(...point.map((v, i) => v - previous[i]));
-    stops.push({ point, distance: total });
-    previous = point;
-  }
-  return stops.map((stop) => ({ point: stop.point, u: total ? stop.distance / total : 0 }));
-}
-
 function motion_flowTouches(scene) {
   const flows = Array.isArray(scene.flows) ? scene.flows : [];
   return flows.map((flow) => new Set(Array.isArray(flow.path) ? flow.path : []));
@@ -345,7 +334,6 @@ export function tick(scene, svgElement, timeSeconds) {
     const speed = Number.isFinite(entry.flow.speed) ? entry.flow.speed : 6;
     const loopsPerSecond = speed / 60;
     const flowTrails = trailsByFlow.get(flowIndex) || [];
-    const stops = motion_pathStops(entry.edges);
     list.forEach((packet, slot) => {
       const u = (((timeSeconds * loopsPerSecond + slot / list.length) % 1) + 1) % 1;
       const world = sampleFlowPoint(entry.edges, u);
@@ -362,22 +350,25 @@ export function tick(scene, svgElement, timeSeconds) {
       const nx = -(ay - sy) / run;
       const ny = (ax - sx) / run;
       (packet.motion_sparks || []).forEach((spark, index) => {
-        const hash = motion_hash(flowIndex, slot, Math.floor(timeSeconds * 12), index);
-        const side = hash % 2 ? 1 : -1;
-        const off = motion_SPARK_OFFSET * (1 + ((hash >>> 4) % 1000) / 999);
-        const along = (((hash >>> 14) % 1000) / 999 - 0.5) * 0.34;
-        spark.setAttribute('cx', String(motion_round(sx + nx * off * side + (ax - sx) / run * along)));
-        spark.setAttribute('cy', String(motion_round(sy + ny * off * side + (ay - sy) / run * along)));
-        spark.setAttribute('opacity', String(motion_round(0.2 + ((hash >>> 20) % 351) / 1000)));
+        const normal = motion_SPARK_NORMAL_BASE + motion_SPARK_NORMAL_WAVE * Math.sin(2 * Math.PI * (motion_WAVE_CYCLES * u + index / 3));
+        const along = motion_SPARK_ALONG_WAVE * Math.sin(2 * Math.PI * (5 * u + index / 2));
+        spark.setAttribute('cx', String(motion_round(sx + nx * normal + (ax - sx) / run * along)));
+        spark.setAttribute('cy', String(motion_round(sy + ny * normal + (ay - sy) / run * along)));
+        const alpha = motion_SPARK_ALPHA * (0.5 + 0.5 * Math.sin(2 * Math.PI * (2 * u + index / 3)));
+        spark.setAttribute('opacity', String(motion_round(Math.max(0, Math.min(motion_SPARK_ALPHA_MAX, alpha)))));
       });
       const trail = flowTrails[slot];
       if (!trail) return;
       Array.from(trail.children).forEach((piece, index) => {
         const head = Math.min(1, Math.max(0, u + motion_TRAIL_LEAD - motion_TRAIL_SPAN * index / 7));
         const tail = Math.min(1, Math.max(0, u + motion_TRAIL_LEAD - motion_TRAIL_SPAN * (index + 1) / 7));
-        const points = [sampleFlowPoint(entry.edges, tail), ...stops.filter((stop) => stop.u > tail && stop.u < head).map((stop) => stop.point), sampleFlowPoint(entry.edges, head)];
+        const points = [];
+        for (let step = 0; step < motion_HOT_SAMPLES; step += 1) {
+          const fraction = step / (motion_HOT_SAMPLES - 1);
+          points.push(sampleFlowPoint(entry.edges, tail + (head - tail) * fraction));
+        }
         piece.setAttribute('points', points.map((point) => project(...point).map(motion_round).join(',')).join(' '));
-        const wave = 0.84 + 0.16 * Math.cos((u * motion_WAVE_CYCLES - index / 7) * Math.PI * 2);
+        const wave = motion_HOT_WAVE_MIN + motion_HOT_WAVE_AMP * Math.cos((u * motion_WAVE_CYCLES - index / 7) * Math.PI * 2);
         piece.setAttribute('stroke-opacity', String(motion_round(Math.min(1, motion_HOT[index] * wave * glow))));
       });
     });

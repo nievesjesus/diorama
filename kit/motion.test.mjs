@@ -443,6 +443,63 @@ test('electric pulses seed aura, bright core, seven hot strokes and three sparks
   }
 });
 
+function fixtureFrame(svg) {
+  const packet = svg.circles[0];
+  const circles = [packet, packet.motion_aura, ...packet.motion_sparks];
+  const pieces = Array.from(svg.trails[0].children).map((piece) => (
+    String(piece.attrs.points || '').trim().split(/\s+/).filter(Boolean).map((pair) => pair.split(',').map(Number))
+  ));
+  const opacities = Array.from(svg.trails[0].children).map((piece) => Number(piece.attrs['stroke-opacity']));
+  return { circles: circles.map((node) => [Number(node.attrs.cx), Number(node.attrs.cy)]), pieces, opacities };
+}
+
+test('anti-flicker invariant: consecutive frames never teleport packets, trails or sparks', { skip }, () => {
+  const scene = trailScene();
+  const edges = sceneMod.resolveFlows(scene)[0].edges;
+  const projected = edges.flatMap((edge) => edge.points.map((point) => isoMod.project(point[0], point[1], point[2])));
+  let pathLength = 0;
+  for (let index = 1; index < projected.length; index += 1) {
+    pathLength += Math.hypot(projected[index][0] - projected[index - 1][0], projected[index][1] - projected[index - 1][1]);
+  }
+  const limit = pathLength * 0.08;
+  assert.ok(pathLength > 0, 'fixture path has length');
+  const svg = fakeSvg(1, 1);
+  svg.circles[0].motion_aura = fakeNode({});
+  svg.circles[0].motion_sparks = [fakeNode({}), fakeNode({}), fakeNode({})];
+  const step = 1 / 60;
+  let maxDelta = 0;
+  for (let sample = 0; sample < 24; sample += 1) {
+    const t = sample * step;
+    motionMod.tick(scene, svg, t);
+    const before = fixtureFrame(svg);
+    motionMod.tick(scene, svg, t + step);
+    const after = fixtureFrame(svg);
+    assert.equal(after.circles.length, before.circles.length, 'packet element count is constant across frames');
+    assert.equal(after.circles.length, 5, 'one packet, one aura and three sparks');
+    assert.equal(after.pieces.length, before.pieces.length, 'hot-segment count is constant across frames');
+    assert.ok(after.opacities.every((value) => value > 0), 'no hot segment disappears');
+    after.pieces.forEach((points, index) => {
+      assert.equal(points.length, before.pieces[index].length, 'hot-segment vertex count is constant across frames');
+      assert.equal(points.length, 8, 'hot segments sample eight arc-length points');
+    });
+    after.circles.forEach(([x, y], index) => {
+      const [px, py] = before.circles[index];
+      const delta = Math.hypot(x - px, y - py);
+      maxDelta = Math.max(maxDelta, delta);
+      assert.ok(delta < limit, `element ${index} moved ${delta} (>${limit}) between frames`);
+    });
+    after.pieces.forEach((points, index) => {
+      points.forEach(([x, y], vertex) => {
+        const [px, py] = before.pieces[index][vertex];
+        const delta = Math.hypot(x - px, y - py);
+        maxDelta = Math.max(maxDelta, delta);
+        assert.ok(delta < limit, `hot-segment ${index} vertex ${vertex} moved ${delta} (>${limit})`);
+      });
+    });
+  }
+  assert.ok(maxDelta > 0, 'elements actually move between frames');
+});
+
 test('hot strokes stay on the sampled cable including the first fifth of the path', { skip }, () => {
   const scene = flowScene();
   scene.links[0].kind = 'cable';
