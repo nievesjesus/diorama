@@ -22,7 +22,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Run tests
-        run: node --test kit/ scripts/
+        run: node --test
 
       - name: Build examples
         run: |

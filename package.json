@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test kit/ scripts/",
+    "test": "node --test",
     "build": "node scripts/build-examples.mjs",
     "audit": "node scripts/build-examples.mjs --audit",
     "capture": "node scripts/capture.mjs"
