@@ -27,7 +27,7 @@ jobs:
       - name: Build examples
         run: |
           if ls examples/*/scene.json >/dev/null 2>&1; then
-            node scripts/build-examples.mjs
+            node scripts/build-examples.mjs --svg --webgl
           else
             echo "No examples yet; skipping build."
           fi
@@ -38,6 +38,17 @@ jobs:
             git diff --exit-code
           else
             echo "No examples yet; skipping diff check."
+          fi
+
+      - name: Check world pages are self-contained
+        run: |
+          if ls examples/*/world.html >/dev/null 2>&1; then
+            if grep -nE 'script[^>]+src=|<link[^>]+href="http' examples/*/world.html; then
+              echo "world.html pages must not reference external scripts or stylesheets."
+              exit 1
+            fi
+          else
+            echo "No world.html pages yet; skipping self-contained check."
           fi
 
       - name: Audit examples
