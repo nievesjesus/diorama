@@ -96,6 +96,46 @@ test('renderSVG renders labels but never static flow packets', () => {
   assert.ok(!svg.includes('class="packet"'), 'packets are runtime-only');
 });
 
+test('renderSVG emits an accessible desc listing parts and links', () => {
+  const scene = makeScene('light');
+  const svg = renderSVG(scene);
+  assert.match(svg, / role="img" aria-label="Request path" aria-describedby="diorama-desc">/, 'root svg keeps the title label and points at the desc');
+  const desc = svg.match(/<desc id="diorama-desc">([^<]*)<\/desc>/);
+  assert.ok(desc, 'root svg carries a desc');
+  assert.ok(desc[1].includes('Request path.'), 'desc includes the title');
+  assert.ok(desc[1].includes('A small three-tier system.'), 'desc includes the subtitle');
+  const name = (id) => scene.parts.find((part) => part.id === id).label || id;
+  const parts = scene.parts.map((part) => part.label || part.id).join(', ');
+  assert.ok(desc[1].includes('Parts: ' + parts + '.'), 'desc lists parts in author order');
+  const links = scene.links.map((link) => name(link.from) + ' to ' + name(link.to)).join(', ');
+  assert.ok(desc[1].includes('Links: ' + links + '.'), 'desc lists links in author order');
+});
+
+test('renderSVG omits the links sentence when a scene has no links', () => {
+  const scene = makeScene('light');
+  scene.links = [];
+  const desc = renderSVG(scene).match(/<desc id="diorama-desc">([^<]*)<\/desc>/)[1];
+  assert.ok(desc.includes('Parts: '), 'parts sentence stays');
+  assert.ok(!desc.includes('Links:'), 'no empty links sentence');
+});
+
+test('each labelled part group carries an escaped aria-label', () => {
+  const scene = makeScene('dark');
+  scene.parts[0].label = 'Web <edge> & "core"';
+  const svg = renderSVG(scene);
+  assert.match(svg, /<g class="part" data-id="web" aria-label="Web &lt;edge&gt; &amp; &quot;core&quot;">/);
+  assert.ok(!svg.includes('Web <edge>'), 'no raw markup leaks from a label');
+  const unlabelled = svg.match(/<g class="part" data-id="logs"[^>]*>/)[0];
+  assert.ok(!unlabelled.includes('aria-label'), 'parts without a label stay unnamed');
+});
+
+test('desc and part aria-labels are byte-identical across runs', () => {
+  const scene = makeScene('light');
+  const first = renderSVG(scene);
+  assert.equal(first, renderSVG(JSON.parse(JSON.stringify(scene))));
+  assert.match(first, /<desc id="diorama-desc">Request path\. A small three-tier system\. Parts: Web, API, Postgres, Redis, Queue, logs, Gateway, net, pipe, Object store, CDN\. Links: Web to API, API to Postgres, Web to Queue, Gateway to Object store, logs to Object store, API to Redis\.<\/desc>/);
+});
+
 test('renderSVG throws on an unknown color token', () => {
   const scene = makeScene('light');
   scene.parts[0].color = 'teal';

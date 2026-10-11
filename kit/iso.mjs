@@ -414,7 +414,10 @@ function iso_expand(points, factor) {
 }
 
 function iso_partAttributes(opts) {
-  return opts.id ? { 'data-id': opts.id } : {};
+  const attributes = {};
+  if (opts.id) attributes['data-id'] = opts.id;
+  if (opts.label) attributes['aria-label'] = opts.label;
+  return attributes;
 }
 
 function iso_octagon(x, y, w, d, inset, k, z) {
@@ -1673,12 +1676,24 @@ export function renderSVG(scene) {
     return occlusion + iso_solidMarkup(solid, fit.scale);
   }).join('');
   const labels = iso_labelMarkup(scene.parts, fit, theme);
-  const label = scene.title ? iso_escape(scene.title) : 'Isometric diagram';
+  const title = scene.title ? String(scene.title) : 'Isometric diagram';
+  const sentence = (value) => /[.!?]$/.test(value) ? value : value + '.';
+  const partName = (part) => part && part.label ? String(part.label) : String(part && part.id);
+  const summary = [sentence(title)];
+  if (scene.subtitle) summary.push(sentence(String(scene.subtitle)));
+  summary.push('Parts: ' + scene.parts.map(partName).join(', ') + '.');
+  if (links.length > 0) {
+    summary.push('Links: ' + links.map((link) => partName(partsById.get(link.from)) + ' to ' + partName(partsById.get(link.to))).join(', ') + '.');
+  }
+  const descId = 'diorama-desc';
+  const desc = iso_escape(summary.join(' '));
+  const label = iso_escape(title);
   return '<svg xmlns="http://www.w3.org/2000/svg" class="diorama" viewBox="0 0 ' + iso_format(width) + ' ' + iso_format(height) + '"'
     + ' width="' + iso_format(width) + '" height="' + iso_format(height) + '"'
     + ' preserveAspectRatio="xMidYMid meet"'
-    + ' data-fill="' + iso_format(fit.fill) + '" role="img" aria-label="' + label + '">'
+    + ' data-fill="' + iso_format(fit.fill) + '" role="img" aria-label="' + label + '" aria-describedby="' + descId + '">'
     + '<title>' + label + '</title>'
+    + '<desc id="' + descId + '">' + desc + '</desc>'
     + iso_defs(theme, scene.parts)
     + '<g transform="translate(' + iso_format(fit.tx) + ',' + iso_format(fit.ty) + ') scale(' + iso_format(fit.scale) + ')">'
     + gridMarkup + voidMarkup + floorMarkup + groundMarkup + reflections + body + labels
