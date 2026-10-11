@@ -1,6 +1,6 @@
 ---
 name: diorama
-description: Turn a software system into a detailed, interactive isometric figure — a standalone HTML page with SVG solids, animated flows, hover tracing, a live readout, light and dark themes, and a geometry audit — for docs, READMEs, blog posts and landing pages. Use when asked for an architecture diagram, system or infrastructure diagram, isometric illustration, exploded view, or an interactive figure of a stack described by a docker-compose file, kubernetes manifests, terraform, or plain text.
+description: Turn a software system into a detailed, interactive isometric figure: a standalone HTML page with SVG solids, animated flows, hover tracing, a live readout, both themes, and a geometry audit, for docs and READMEs. Use when asked for an architecture diagram, system or infrastructure diagram, isometric illustration, exploded view, or an interactive figure of a stack, including one described by a docker-compose file. Not for sequence diagrams, ER diagrams, UML, or Mermaid-style flowcharts: diorama renders systems and machines as isometric scenes.
 ---
 
 # Diorama
@@ -56,12 +56,13 @@ mechanical geometry audit before it ships.
    PNG like a critic**: the slab should float with atmosphere on all four sides — check overlaps,
    floating ends, unreadable labels, busy flows, crowding. Fix and repeat. A figure ships only
    after you have looked at it.
-6. **Deliver.** The build emits a standalone HTML file that works from a double-click, with no
-   network and no external assets: it renders as a full-bleed animated world — a floating slab in
-   an atmospheric void under a glass HUD. Hover to trace links; append `?t=<seconds>` to freeze a
-   frame and `?frame=1` for a framed embed. Add `--webgl` and the build also writes `world.html`,
-   the same scene as a three.js WebGL world beside the SVG `index.html`. Add `--svg out.svg` for a
-   lone static SVG, or capture a PNG. Produce both themes when asked.
+6. **Deliver.** GitHub and READMEs cannot render the standalone HTML, so the default artifact is a
+   captured PNG: run the step-5 `scripts/capture.mjs` at the destination size and ship that image,
+   with the built HTML as the interactive extra and a link next to it (hover traces links;
+   `?t=<seconds>` freezes a frame, `?frame=1` gives a framed embed). The build still emits the
+   standalone HTML — `--webgl` adds `world.html`, the same scene as a three.js WebGL world beside
+   the SVG `index.html`, and `--svg out.svg` writes a lone static SVG — and produce both themes
+   when asked.
 
 ## Quickstart from docker-compose
 
@@ -98,7 +99,8 @@ node scripts/build-examples.mjs [--svg] [--webgl] [--audit] [--theme light|dark]
 ## House rules
 
 - Zero runtime dependencies; `node:` builtins only; never reach the network.
-- No comments in code; English everywhere; no emojis.
+- Kit sources ship without comments because they are inlined into the HTML; world sources may
+  document non-obvious rendering behavior. English everywhere; no emojis.
 - Deterministic output: no `Date.now`, no `Math.random` in render paths; byte-identical
   rebuilds.
 

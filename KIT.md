@@ -29,6 +29,8 @@ The rendering core. Zero runtime dependencies, ESM only, Node >= 20.
 }
 ```
 
+Scene-level `notes` are accepted by `validateScene` but never rendered; they are scratch space for the building agent.
+
 ## API
 
 ```js

@@ -74,14 +74,14 @@ More prompts:
 - **Scene spec v1 (JSON).** A compact, deterministic description of parts, links, flows and readouts. You can write it by hand or let Claude derive it from a real config or a plain description.
 - **Isometric kit.** Projects the scene into a 2:1 isometric SVG, paints solids back to front with a fixed four-tone material palette, and wires parts together with tubes and cables.
 - **Standalone HTML.** Emits one portable file with no external assets. Append `?t=<seconds>` to the URL to seek and freeze the animation on an exact frame, or `?frame=1` for a framed embed.
-- **Geometry audit and capture.** `--audit` proves nothing overlaps or floats, and headless capture verifies the rendered page frame by frame.
+- **Geometry audit and capture.** `--audit` reports no solid overlaps, nothing floats unsupported, no depth inversions, links anchored, tubes clear of solids and labels clear of each other; more than one accent is a warning, since replica sets and partition groups may share one. Headless capture verifies the rendered page frame by frame.
 
 ## Requirements
 
 | | Needed for | Notes |
 |---|---|---|
 | **Node.js 20.10+** | builds, kit, checks | Built-in modules only: nothing to `npm install`. |
-| **Chrome or Chromium** | the checks | Used headless by the capture and audit scripts. |
+| **Chrome or Chromium** | headless captures | Used headless by the capture script; the audit is plain Node and needs no browser. |
 
 The kit has zero dependencies. Every script imports from `node:` builtins and nothing else, and no step reaches the network.
 
