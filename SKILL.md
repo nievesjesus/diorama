@@ -20,7 +20,9 @@ mechanical geometry audit before it ships.
    flows (speed 8–16 loops/min), and a readout of 2–3 real numbers. Keep labels to short
    nouns. Choose the theme per destination: light by default, dark for dark pages.
 3. **Write `scene.json`** against the Scene JSON v1 schema (see the schema and color tokens in
-   `KIT.md`). Minimal working shape:
+   `KIT.md`). To skip hand-placing coordinates, write a draft of parts and links instead and run
+   `node scripts/layout.mjs draft.json --out scene.json`, which emits an audit-clean scene (see
+   `references/compose.md`). Minimal working shape:
 
    ```json
    {
@@ -77,6 +79,7 @@ build and audit as above.
 
 ```sh
 node build.mjs <scene.json> [--theme light|dark] [--svg out.svg] [--webgl] [--audit] [-o out.html]
+node scripts/layout.mjs <draft.json> --out <scene.json> [--theme light|dark]
 node scripts/capture.mjs <page.html> <out.png> [--t seconds] [--w cssW] [--h cssH] [--zoom 2]
 node kit/audit.mjs <scene.json>
 node scripts/build-examples.mjs [--svg] [--webgl] [--audit] [--theme light|dark]
