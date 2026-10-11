@@ -1,0 +1,156 @@
+name: three-tier-web
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - edge
+      - app
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/example/three-tier-api:1.4.0
+    deploy:
+      replicas: 2
+    environment:
+      DATABASE_URL: postgres://app:secret@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+      QUEUE_URL: amqp://queue:5672
+      LOG_LEVEL: info
+    depends_on:
+      - postgres
+      - redis
+      - queue
+    networks:
+      - app
+      - data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    image: ghcr.io/example/three-tier-worker:1.4.0
+    command: ["node", "worker.mjs"]
+    environment:
+      DATABASE_URL: postgres://app:secret@postgres:5432/app
+      QUEUE_URL: amqp://queue:5672
+    depends_on:
+      - postgres
+      - queue
+    networks:
+      - app
+      - data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    networks:
+      - data
+
+  queue:
+    image: rabbitmq:3.13-management-alpine
+    networks:
+      - data
+
+  monitoring:
+    image: prom/prometheus:v2.54.1
+    profiles: ["observability"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - app
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles: ["observability"]
+    depends_on:
+      - monitoring
+    networks:
+      - app
+
+  logs:
+    image: grafana/loki:3.1.1
+    profiles: ["observability"]
+    networks:
+      - app
+
+  cron:
+    image: ghcr.io/example/three-tier-scheduler:1.4.0
+    profiles: ["ops"]
+    command: ["node", "scheduler.mjs"]
+    networks:
+      - app
+      - data
+
+  vault:
+    image: hashicorp/vault:1.17
+    profiles: ["security"]
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - data
+
+  auth:
+    image: quay.io/keycloak/keycloak:25.0
+    profiles: ["security"]
+    command: ["start-dev"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    networks:
+      - edge
+      - app
+
+  search:
+    image: opensearchproject/opensearch:2.17.1
+    profiles: ["search"]
+    environment:
+      discovery.type: single-node
+    networks:
+      - data
+
+  objstore:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    profiles: ["storage"]
+    command: ["server", "/data"]
+    networks:
+      - data
+
+  mailer:
+    image: mailhog/mailhog:v1.0.1
+    profiles: ["dev"]
+    networks:
+      - app
+
+volumes:
+  pgdata:
+
+networks:
+  edge:
+  app:
+  data:

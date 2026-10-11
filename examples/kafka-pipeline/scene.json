@@ -1,0 +1,385 @@
+{
+  "version": 1,
+  "title": "Event pipeline",
+  "subtitle": "Kafka, three partitions, two consumer groups",
+  "theme": "dark",
+  "size": [
+    1280,
+    960
+  ],
+  "hint": "Hover a part to trace the pipeline",
+  "parts": [
+    {
+      "id": "ground",
+      "kind": "plate",
+      "at": [
+        0.5,
+        -12.5,
+        0
+      ],
+      "size": [
+        29,
+        29,
+        0.3
+      ],
+      "color": "slate",
+      "detail": "concrete"
+    },
+    {
+      "id": "rack",
+      "kind": "plate",
+      "at": [
+        9.4,
+        -3.5,
+        0.3
+      ],
+      "size": [
+        7.2,
+        7.2,
+        0.3
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "p0",
+      "kind": "cylinder",
+      "label": "P0",
+      "at": [
+        10.6,
+        2.4,
+        0.6
+      ],
+      "radius": 1.0,
+      "h": 2.4,
+      "axis": "z",
+      "color": "plum",
+      "accent": true
+    },
+    {
+      "id": "p1",
+      "kind": "cylinder",
+      "label": "P1",
+      "at": [
+        13.0,
+        0.0,
+        0.6
+      ],
+      "radius": 1.0,
+      "h": 2.4,
+      "axis": "z",
+      "color": "plum",
+      "accent": true
+    },
+    {
+      "id": "p2",
+      "kind": "cylinder",
+      "label": "P2",
+      "at": [
+        15.4,
+        -2.4,
+        0.6
+      ],
+      "radius": 1.0,
+      "h": 2.4,
+      "axis": "z",
+      "color": "plum",
+      "accent": true
+    },
+    {
+      "id": "producer",
+      "kind": "box",
+      "label": "Producer",
+      "at": [
+        2.2,
+        3.2,
+        0.3
+      ],
+      "size": [
+        3.6,
+        3.6,
+        2.8
+      ],
+      "color": "blue",
+      "vents": true,
+      "leds": 3
+    },
+    {
+      "id": "schema",
+      "kind": "box",
+      "label": "Schema registry",
+      "at": [
+        3.9,
+        -2.1,
+        0.3
+      ],
+      "size": [
+        3.2,
+        3.2,
+        2.2
+      ],
+      "color": "sand"
+    },
+    {
+      "id": "controller",
+      "kind": "box",
+      "label": "Controller",
+      "at": [
+        10.1,
+        -10.9,
+        0.3
+      ],
+      "size": [
+        2.8,
+        2.8,
+        2.2
+      ],
+      "color": "cloud",
+      "detail": "rack"
+    },
+    {
+      "id": "consumerA",
+      "kind": "box",
+      "label": "Consumer A",
+      "at": [
+        20.2,
+        -0.6,
+        0.3
+      ],
+      "size": [
+        3.6,
+        3.2,
+        2.6
+      ],
+      "color": "green",
+      "vents": true,
+      "leds": 3
+    },
+    {
+      "id": "consumerB",
+      "kind": "box",
+      "label": "Consumer B",
+      "at": [
+        12.2,
+        7.4,
+        0.3
+      ],
+      "size": [
+        3.6,
+        3.2,
+        2.6
+      ],
+      "color": "green",
+      "vents": true,
+      "leds": 3
+    },
+    {
+      "id": "offsetsA",
+      "kind": "plate",
+      "label": "Offsets A",
+      "at": [
+        24.5,
+        3.8,
+        0.3
+      ],
+      "size": [
+        3.0,
+        2.4,
+        0.3
+      ],
+      "color": "sand"
+    },
+    {
+      "id": "offsetsB",
+      "kind": "plate",
+      "label": "Offsets B",
+      "at": [
+        16.5,
+        11.8,
+        0.3
+      ],
+      "size": [
+        3.0,
+        2.4,
+        0.3
+      ],
+      "color": "sand"
+    },
+    {
+      "id": "sink",
+      "kind": "cylinder",
+      "label": "Sink",
+      "at": [
+        21.0,
+        -7.5,
+        0.3
+      ],
+      "radius": 1.6,
+      "h": 2.8,
+      "axis": "z",
+      "color": "copper"
+    },
+    {
+      "id": "dlq",
+      "kind": "box",
+      "label": "DLQ",
+      "at": [
+        20.5,
+        7.5,
+        0.3
+      ],
+      "size": [
+        3.0,
+        3.0,
+        2.4
+      ],
+      "color": "brick",
+      "hazard": true
+    },
+    {
+      "id": "spare-coil",
+      "kind": "cylinder",
+      "at": [
+        4.3,
+        10,
+        0.3
+      ],
+      "radius": 0.75,
+      "h": 0.22,
+      "color": "copper",
+      "detail": "coil",
+      "axis": "z"
+    }
+  ],
+  "links": [
+    {
+      "from": "producer",
+      "to": "rack",
+      "kind": "tube",
+      "color": "blue",
+      "label": "publish"
+    },
+    {
+      "from": "rack",
+      "to": "consumerA",
+      "kind": "tube",
+      "color": "plum",
+      "label": "consume"
+    },
+    {
+      "from": "rack",
+      "to": "consumerB",
+      "kind": "tube",
+      "color": "plum",
+      "label": "consume"
+    },
+    {
+      "from": "consumerA",
+      "to": "sink",
+      "kind": "tube",
+      "color": "green",
+      "label": "flush"
+    },
+    {
+      "from": "consumerB",
+      "to": "sink",
+      "kind": "tube",
+      "color": "green",
+      "label": "flush"
+    },
+    {
+      "from": "consumerA",
+      "to": "dlq",
+      "kind": "cable",
+      "color": "brick",
+      "label": "retry"
+    },
+    {
+      "from": "producer",
+      "to": "schema",
+      "kind": "cable",
+      "color": "sand",
+      "label": "register"
+    },
+    {
+      "from": "controller",
+      "to": "rack",
+      "kind": "cable",
+      "color": "cloud",
+      "label": "elect"
+    },
+    {
+      "from": "consumerA",
+      "to": "offsetsA",
+      "kind": "cable",
+      "color": "copper",
+      "label": "commit"
+    },
+    {
+      "from": "consumerB",
+      "to": "offsetsB",
+      "kind": "cable",
+      "color": "copper",
+      "label": "commit"
+    }
+  ],
+  "flows": [
+    {
+      "path": [
+        "producer",
+        "rack",
+        "consumerA",
+        "sink"
+      ],
+      "kind": "job",
+      "color": "green",
+      "speed": 12,
+      "count": 3
+    },
+    {
+      "path": [
+        "producer",
+        "rack",
+        "consumerB",
+        "sink"
+      ],
+      "kind": "job",
+      "color": "green",
+      "speed": 10,
+      "count": 2
+    },
+    {
+      "path": [
+        "consumerA",
+        "dlq"
+      ],
+      "kind": "packet",
+      "color": "brick",
+      "speed": 8,
+      "count": 2
+    }
+  ],
+  "readout": [
+    {
+      "label": "Partitions",
+      "value": "3"
+    },
+    {
+      "label": "Consumer lag",
+      "value": "1,284"
+    },
+    {
+      "label": "Retention",
+      "value": "7d"
+    }
+  ],
+  "notes": [
+    {
+      "text": "Replication factor 3",
+      "at": "p1"
+    },
+    {
+      "text": "Poison events parked here",
+      "at": "dlq"
+    }
+  ]
+}

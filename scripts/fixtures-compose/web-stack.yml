@@ -1,0 +1,36 @@
+# Fixture (a): a small web stack with a shared data network.
+version: "3.9"
+
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    networks:
+      - frontend
+  api:
+    image: node:20
+    depends_on:
+      - web
+    networks:
+      - frontend
+      - backend
+  postgres:
+    image: postgres:16
+    networks:
+      - dataonly
+  redis:
+    image: redis:7
+    networks:
+      - dataonly
+  worker:
+    image: myapp/worker:latest
+    deploy:
+      replicas: 2
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend

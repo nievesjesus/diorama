@@ -1,0 +1,22 @@
+name: deliver
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+env:
+  IMAGE: registry.example.com/web:v1.4.2
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [node-1, node-2]
+    steps:
+      - name: repo
+        uses: actions/checkout@v4
+      - name: build
+        run: docker build -t "$IMAGE" .
+      - name: test
+        run: npm test
+      - name: deploy
+        run: kubectl apply -f deployment.yaml

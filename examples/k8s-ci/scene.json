@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "title": "Kubernetes deploy",
+  "subtitle": "Three replicas, delivered by CI",
+  "theme": "light",
+  "size": [
+    1280,
+    960
+  ],
+  "hint": "Hover a part to trace the flow",
+  "parts": [
+    {
+      "id": "ground",
+      "kind": "plate",
+      "at": [
+        -2.1,
+        -2,
+        -0.4
+      ],
+      "size": [
+        36.1,
+        27,
+        0.4
+      ],
+      "color": "paper",
+      "detail": "concrete"
+    },
+    {
+      "id": "ingress",
+      "kind": "box",
+      "label": "Ingress",
+      "at": [
+        0,
+        2,
+        0
+      ],
+      "size": [
+        4,
+        4,
+        2
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "service",
+      "kind": "plate",
+      "label": "Service",
+      "at": [
+        6.5,
+        2,
+        0
+      ],
+      "size": [
+        8,
+        4,
+        0.8
+      ],
+      "color": "cloud"
+    },
+    {
+      "id": "cluster",
+      "kind": "plate",
+      "at": [
+        18,
+        0,
+        0
+      ],
+      "size": [
+        14,
+        13,
+        0.9
+      ],
+      "color": "slate",
+      "accent": true,
+      "detail": "concrete"
+    },
+    {
+      "id": "ns-north",
+      "kind": "plate",
+      "label": "Cluster",
+      "at": [
+        18,
+        0,
+        0.9
+      ],
+      "size": [
+        14,
+        0.6,
+        2.2
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "ns-east",
+      "kind": "plate",
+      "at": [
+        31.4,
+        0,
+        0.9
+      ],
+      "size": [
+        0.6,
+        13,
+        2.2
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "pod-a",
+      "kind": "box",
+      "label": "Pod 1",
+      "at": [
+        20,
+        1.5,
+        0.9
+      ],
+      "size": [
+        3.2,
+        3.2,
+        2.6
+      ],
+      "color": "green",
+      "leds": 2
+    },
+    {
+      "id": "pod-b",
+      "kind": "box",
+      "label": "Pod 2",
+      "at": [
+        20,
+        7.5,
+        0.9
+      ],
+      "size": [
+        3.2,
+        3.2,
+        2.6
+      ],
+      "color": "green",
+      "leds": 2
+    },
+    {
+      "id": "pod-c",
+      "kind": "box",
+      "label": "Pod 3",
+      "at": [
+        26,
+        4.5,
+        0.9
+      ],
+      "size": [
+        3.2,
+        3.2,
+        2.6
+      ],
+      "color": "green",
+      "leds": 2
+    },
+    {
+      "id": "registry",
+      "kind": "cylinder",
+      "label": "Registry",
+      "at": [
+        13,
+        11,
+        0
+      ],
+      "radius": 2.2,
+      "h": 3,
+      "axis": "z",
+      "color": "amber",
+      "detail": "tank"
+    },
+    {
+      "id": "ci",
+      "kind": "plate",
+      "at": [
+        2,
+        18,
+        0
+      ],
+      "size": [
+        23,
+        4,
+        0.5
+      ],
+      "color": "paper",
+      "detail": "concrete"
+    },
+    {
+      "id": "ci-repo",
+      "kind": "box",
+      "label": "Repo",
+      "at": [
+        3,
+        19,
+        0.5
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "sand"
+    },
+    {
+      "id": "ci-build",
+      "kind": "box",
+      "label": "Build",
+      "at": [
+        8.6,
+        19,
+        0.5
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "blue",
+      "detail": "rack"
+    },
+    {
+      "id": "ci-test",
+      "kind": "box",
+      "label": "Test",
+      "at": [
+        14.2,
+        19,
+        0.5
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "plum",
+      "detail": "rack"
+    },
+    {
+      "id": "ci-deploy",
+      "kind": "box",
+      "label": "Deploy",
+      "at": [
+        19.8,
+        19,
+        0.5
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "copper"
+    },
+    {
+      "id": "supply-crate",
+      "kind": "box",
+      "at": [
+        0,
+        19,
+        0
+      ],
+      "size": [
+        1.2,
+        1.2,
+        0.9
+      ],
+      "color": "sand",
+      "detail": "crate"
+    }
+  ],
+  "links": [
+    {
+      "from": "ingress",
+      "to": "service",
+      "kind": "tube",
+      "color": "slate",
+      "label": "route"
+    },
+    {
+      "from": "service",
+      "to": "pod-a",
+      "kind": "tube",
+      "color": "blue"
+    },
+    {
+      "from": "service",
+      "to": "pod-b",
+      "kind": "tube",
+      "color": "blue"
+    },
+    {
+      "from": "service",
+      "to": "pod-c",
+      "kind": "tube",
+      "color": "blue"
+    },
+    {
+      "from": "ci-repo",
+      "to": "ci-build",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "ci-build",
+      "to": "ci-test",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "ci-test",
+      "to": "ci-deploy",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "registry",
+      "to": "cluster",
+      "kind": "cable",
+      "color": "blue",
+      "label": "deploy"
+    }
+  ],
+  "flows": [
+    {
+      "path": [
+        "ingress",
+        "service",
+        "pod-a"
+      ],
+      "kind": "request",
+      "color": "green",
+      "speed": 12,
+      "count": 3
+    },
+    {
+      "path": [
+        "ingress",
+        "service",
+        "pod-b"
+      ],
+      "kind": "request",
+      "color": "green",
+      "speed": 10,
+      "count": 2
+    },
+    {
+      "path": [
+        "registry",
+        "cluster"
+      ],
+      "kind": "job",
+      "color": "blue",
+      "speed": 10,
+      "count": 2
+    }
+  ],
+  "readout": [
+    {
+      "label": "Replicas",
+      "value": "3"
+    },
+    {
+      "label": "Nodes",
+      "value": "2"
+    },
+    {
+      "label": "Version",
+      "value": "v1.4.2"
+    }
+  ],
+  "notes": [
+    {
+      "text": "Rolling update keeps pods healthy",
+      "at": "cluster"
+    }
+  ]
+}

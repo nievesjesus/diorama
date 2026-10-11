@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "title": "Three-tier web stack",
+  "subtitle": "Load balancer, two app servers and one database",
+  "theme": "light",
+  "size": [1280, 960],
+  "hint": "Hover a part to trace its links",
+  "parts": [
+    { "id": "lb", "kind": "box", "label": "Load balancer", "at": [0, 0, 0], "size": [4, 4, 1], "color": "steel" },
+    { "id": "api1", "kind": "box", "label": "App server A", "at": [-3, 8, 0], "size": [3, 3, 2], "color": "blue", "accent": true },
+    { "id": "api2", "kind": "box", "label": "App server B", "at": [4, 8, 0], "size": [3, 3, 2], "color": "blue" },
+    { "id": "db", "kind": "box", "label": "Database", "at": [1, 16, 0], "size": [4, 4, 3], "color": "copper" }
+  ],
+  "links": [
+    { "from": "lb", "to": "api1", "kind": "tube", "color": "slate", "label": "balance" },
+    { "from": "lb", "to": "api2", "kind": "tube", "color": "slate" },
+    { "from": "api1", "to": "db", "kind": "cable", "color": "amber", "label": "query" },
+    { "from": "api2", "to": "db", "kind": "cable", "color": "amber" }
+  ],
+  "flows": [
+    { "path": ["lb", "api1", "db"], "kind": "request", "color": "green", "speed": 12, "count": 3 },
+    { "path": ["lb", "api2", "db"], "kind": "request", "color": "green", "speed": 10, "count": 2 }
+  ],
+  "readout": [
+    { "label": "Region", "value": "us-east-1" },
+    { "label": "Replicas", "value": "2" }
+  ],
+  "notes": [
+    { "text": "Health checks every 5s", "at": "lb" }
+  ]
+}

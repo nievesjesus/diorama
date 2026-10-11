@@ -1,0 +1,496 @@
+{
+  "version": 1,
+  "title": "Three-tier web app",
+  "subtitle": "nginx edge, two API replicas, Postgres and Redis behind a queue-fed worker",
+  "theme": "light",
+  "size": [
+    1280,
+    960
+  ],
+  "hint": "Hover a part to trace its links",
+  "parts": [
+    {
+      "id": "base",
+      "kind": "plate",
+      "at": [
+        0,
+        0,
+        -0.5
+      ],
+      "size": [
+        34,
+        30,
+        0.5
+      ],
+      "color": "sand",
+      "detail": "concrete"
+    },
+    {
+      "id": "tier",
+      "kind": "plate",
+      "at": [
+        15,
+        0,
+        0
+      ],
+      "size": [
+        14,
+        16,
+        1.2
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "client",
+      "kind": "box",
+      "label": "client",
+      "at": [
+        1,
+        24,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        1.4
+      ],
+      "color": "steel",
+      "leds": 1
+    },
+    {
+      "id": "nginx",
+      "kind": "box",
+      "label": "nginx",
+      "at": [
+        1,
+        17,
+        0
+      ],
+      "size": [
+        4,
+        4,
+        2.2
+      ],
+      "color": "blue",
+      "accent": true
+    },
+    {
+      "id": "api1",
+      "kind": "box",
+      "label": "api-1",
+      "at": [
+        6.5,
+        8,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2.6
+      ],
+      "color": "blue",
+      "vents": true,
+      "leds": 3,
+      "panels": true
+    },
+    {
+      "id": "api2",
+      "kind": "box",
+      "label": "api-2",
+      "at": [
+        12,
+        12.5,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2.6
+      ],
+      "color": "blue",
+      "vents": true,
+      "leds": 3,
+      "panels": true
+    },
+    {
+      "id": "worker",
+      "kind": "box",
+      "label": "worker",
+      "at": [
+        16,
+        18.5,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "green",
+      "vents": true,
+      "leds": 2
+    },
+    {
+      "id": "cron",
+      "kind": "box",
+      "label": "cron",
+      "at": [
+        21.5,
+        18.5,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "green"
+    },
+    {
+      "id": "grafana",
+      "kind": "box",
+      "label": "grafana",
+      "at": [
+        27,
+        18.5,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "steel",
+      "leds": 1
+    },
+    {
+      "id": "objstore",
+      "kind": "box",
+      "label": "objstore",
+      "at": [
+        16,
+        24,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "green"
+    },
+    {
+      "id": "vault",
+      "kind": "box",
+      "label": "vault",
+      "at": [
+        1,
+        1,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "plum"
+    },
+    {
+      "id": "logs",
+      "kind": "box",
+      "label": "logs",
+      "at": [
+        1,
+        6.5,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "copper"
+    },
+    {
+      "id": "monitoring",
+      "kind": "box",
+      "label": "monitoring",
+      "at": [
+        1,
+        12,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "plum",
+      "leds": 1
+    },
+    {
+      "id": "auth",
+      "kind": "box",
+      "label": "auth",
+      "at": [
+        5.5,
+        1,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "mailer",
+      "kind": "box",
+      "label": "mailer",
+      "at": [
+        11,
+        1,
+        0
+      ],
+      "size": [
+        3,
+        3,
+        2
+      ],
+      "color": "brick"
+    },
+    {
+      "id": "postgres",
+      "kind": "cylinder",
+      "label": "postgres",
+      "at": [
+        18,
+        4,
+        1.2
+      ],
+      "radius": 1.8,
+      "h": 3.2,
+      "axis": "z",
+      "color": "amber"
+    },
+    {
+      "id": "search",
+      "kind": "box",
+      "label": "search",
+      "at": [
+        22.5,
+        1.5,
+        1.2
+      ],
+      "size": [
+        4.5,
+        3,
+        2
+      ],
+      "color": "plum"
+    },
+    {
+      "id": "redis",
+      "kind": "cylinder",
+      "label": "redis",
+      "at": [
+        24.7,
+        8.5,
+        1.2
+      ],
+      "radius": 1.5,
+      "h": 2.4,
+      "axis": "z",
+      "color": "sand"
+    },
+    {
+      "id": "queue",
+      "kind": "plate",
+      "label": "queue",
+      "at": [
+        22.5,
+        12.5,
+        1.2
+      ],
+      "size": [
+        4.5,
+        2.5,
+        1
+      ],
+      "color": "copper",
+      "detail": "tray"
+    },
+    {
+      "id": "spare-pallet",
+      "kind": "plate",
+      "at": [
+        11,
+        19,
+        0
+      ],
+      "size": [
+        2,
+        1.5,
+        0.25
+      ],
+      "color": "sand",
+      "detail": "pallet"
+    },
+    {
+      "id": "supply-crate",
+      "kind": "box",
+      "at": [
+        22,
+        25,
+        0
+      ],
+      "size": [
+        1.4,
+        1.4,
+        1.1
+      ],
+      "color": "sand",
+      "detail": "crate"
+    }
+  ],
+  "links": [
+    {
+      "from": "nginx",
+      "to": "api1",
+      "kind": "tube",
+      "color": "steel"
+    },
+    {
+      "from": "nginx",
+      "to": "api2",
+      "kind": "tube",
+      "color": "steel"
+    },
+    {
+      "from": "api1",
+      "to": "postgres",
+      "kind": "cable",
+      "color": "amber"
+    },
+    {
+      "from": "api2",
+      "to": "postgres",
+      "kind": "cable",
+      "color": "amber"
+    },
+    {
+      "from": "api1",
+      "to": "redis",
+      "kind": "cable",
+      "color": "sand"
+    },
+    {
+      "from": "api2",
+      "to": "queue",
+      "kind": "cable",
+      "color": "copper"
+    },
+    {
+      "from": "queue",
+      "to": "worker",
+      "kind": "tube",
+      "color": "copper"
+    },
+    {
+      "from": "worker",
+      "to": "postgres",
+      "kind": "cable",
+      "color": "amber"
+    },
+    {
+      "from": "api1",
+      "to": "auth",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "worker",
+      "to": "objstore",
+      "kind": "cable",
+      "color": "green"
+    },
+    {
+      "from": "nginx",
+      "to": "client",
+      "kind": "cable",
+      "color": "steel"
+    },
+    {
+      "from": "logs",
+      "to": "monitoring",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "vault",
+      "to": "auth",
+      "kind": "cable",
+      "color": "plum"
+    }
+  ],
+  "flows": [
+    {
+      "path": [
+        "nginx",
+        "api1",
+        "postgres"
+      ],
+      "kind": "request",
+      "color": "green",
+      "speed": 12,
+      "count": 3
+    },
+    {
+      "path": [
+        "nginx",
+        "api2",
+        "postgres"
+      ],
+      "kind": "request",
+      "color": "green",
+      "speed": 10,
+      "count": 2
+    },
+    {
+      "path": [
+        "queue",
+        "worker",
+        "postgres"
+      ],
+      "kind": "job",
+      "color": "copper",
+      "speed": 8,
+      "count": 2
+    }
+  ],
+  "readout": [
+    {
+      "label": "API replicas",
+      "value": "2"
+    },
+    {
+      "label": "Networks",
+      "value": "3"
+    },
+    {
+      "label": "Volumes",
+      "value": "1"
+    }
+  ],
+  "notes": [
+    {
+      "text": "nginx terminates client traffic and load-balances the API pool",
+      "at": "nginx"
+    },
+    {
+      "text": "The worker consumes the queue and writes results back to Postgres",
+      "at": "worker"
+    }
+  ]
+}

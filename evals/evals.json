@@ -1,0 +1,37 @@
+{
+  "skill": "diorama",
+  "evals": [
+    {
+      "name": "docker-compose-three-tier",
+      "prompt": "Here is the docker-compose.yml for our three-tier web app: an nginx frontend, a Node API and a Postgres database. Can you diagram it as an isometric figure I can drop into the README? I want the API and the database clearly labeled, and I want to see requests flowing through it.",
+      "expect": [
+        "Produces a single standalone HTML file with no external assets or network requests",
+        "Uses the light theme",
+        "Labels the API and database parts",
+        "Renders an animated request flow between the tiers",
+        "The scene passes the geometry audit"
+      ]
+    },
+    {
+      "name": "kafka-event-pipeline",
+      "prompt": "Draw me a diagram of a Kafka event pipeline: a producer publishes to a topic with three partitions, a stream processor consumes it, and the result goes to a sink. There is no compose file, so build it from this description. Dark theme, please, and show the jobs flowing with a readout that includes consumer lag.",
+      "expect": [
+        "Builds the scene from the plain-language description without a config file",
+        "Uses the dark theme",
+        "Represents the topic with three partitions",
+        "Animates a jobs flow through the producer, processor and sink",
+        "Includes a readout entry for consumer lag"
+      ]
+    },
+    {
+      "name": "kubernetes-and-ci",
+      "prompt": "I have a Kubernetes Deployment (3 replicas behind a Service) and a GitHub Actions pipeline that builds and pushes the image. Make me one isometric diagram of both, with the CI steps connected by cables, and hover highlighting on the parts.",
+      "expect": [
+        "Outputs a single standalone HTML file",
+        "Shows the three replicas and the Service",
+        "Connects the CI steps with cable links",
+        "Enables hover highlighting on the parts"
+      ]
+    }
+  ]
+}

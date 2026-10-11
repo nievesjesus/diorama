@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "title": "Ambiguous depth",
+  "subtitle": "Two overlapping solids share the same depth key",
+  "theme": "light",
+  "size": [960, 720],
+  "parts": [
+    { "id": "slab-a", "kind": "box", "label": "Slab A", "at": [0, 0, 0], "size": [4, 2, 2], "color": "sand" },
+    { "id": "slab-b", "kind": "box", "label": "Slab B", "at": [1, -1, 0], "size": [4, 2, 2], "color": "brick" }
+  ],
+  "readout": [
+    { "label": "Warning", "value": "equal depth keys" }
+  ]
+}

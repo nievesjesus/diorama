@@ -1,0 +1,251 @@
+:root {
+  color-scheme: light dark;
+  --iso-radius: 14px;
+  --iso-gap: 16px;
+  --iso-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", sans-serif;
+  --iso-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+body.theme-light {
+  color-scheme: light;
+  --page: #f2eee4;
+  --card: #fdfbf6;
+  --card-2: #f6f1e6;
+  --ink: #22262c;
+  --muted: #6b7480;
+  --border: #e6dfd0;
+  --stage: #f7f4ec;
+  --stage-hi: #fbf8f1;
+  --stage-lo: #efe9dd;
+  --stage-glow: rgba(255, 252, 245, 0.9);
+  --stage-vignette: rgba(120, 104, 72, 0.06);
+  --accent: #9a7b3f;
+  --glow: rgba(154, 123, 63, 0.35);
+  --shadow: 0 12px 34px rgba(38, 42, 49, 0.12);
+  --label: #22262c;
+  --halo: #fbf9f4;
+}
+
+body.theme-dark {
+  color-scheme: dark;
+  --page: #14171c;
+  --card: #1f232a;
+  --card-2: #191d24;
+  --ink: #e8edf4;
+  --muted: #98a2b0;
+  --border: #313843;
+  --stage: #191d23;
+  --stage-hi: #20252d;
+  --stage-lo: #15181e;
+  --stage-glow: rgba(48, 56, 68, 0.85);
+  --stage-vignette: rgba(0, 0, 0, 0.28);
+  --accent: #c9a24a;
+  --glow: rgba(201, 162, 74, 0.4);
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.5);
+  --label: #e8edf4;
+  --halo: #1f232a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--iso-font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.card {
+  width: 100%;
+  max-width: min(1160px, 94vw);
+  margin: 32px auto;
+  background: linear-gradient(180deg, var(--card) 0%, var(--card-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--iso-radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.card-head {
+  padding: 22px 26px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-head h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.card-head .subtitle {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.stage {
+  padding: 10px 16px 14px;
+  background:
+    radial-gradient(130% 120% at 50% -8%, var(--stage-glow) 0%, rgba(255, 255, 255, 0) 62%),
+    radial-gradient(120% 150% at 50% 118%, var(--stage-vignette) 0%, rgba(0, 0, 0, 0) 58%),
+    linear-gradient(180deg, var(--stage-hi) 0%, var(--stage) 52%, var(--stage-lo) 100%);
+}
+
+.stage svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.stage svg .label {
+  font-family: var(--iso-font);
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.stage svg .label-chip {
+  pointer-events: none;
+}
+
+.part {
+  transition: opacity 0.18s ease;
+}
+
+.part .glow {
+  transition: opacity 0.18s ease;
+}
+
+.stage svg .part:hover,
+.stage svg .part.active {
+  opacity: 0.94;
+}
+
+.stage svg .part.active .glow {
+  opacity: 0.4;
+}
+
+.link {
+  opacity: 0.9;
+  transition: opacity 0.18s ease;
+}
+
+.stage svg .link.active {
+  opacity: 1;
+  stroke-opacity: 1;
+}
+
+.packet {
+  fill: var(--accent);
+  opacity: 0.95;
+}
+
+.packet.active {
+  opacity: 1;
+}
+
+.card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--iso-gap);
+  padding: 14px 26px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 26px;
+  margin: 0;
+}
+
+.readout-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.readout-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readout-value {
+  font-family: var(--iso-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  flex: 1 1 220px;
+  text-align: right;
+}
+
+@media (max-width: 680px) {
+  body {
+    align-items: stretch;
+  }
+
+  .card {
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .card-head,
+  .card-foot {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .stage {
+    padding: 4px 6px;
+  }
+
+  .hint {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part,
+  .part .glow,
+  .link,
+  .packet {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .packet-trail {
+    display: none;
+  }
+}

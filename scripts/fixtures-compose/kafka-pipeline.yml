@@ -1,0 +1,12 @@
+# Fixture (b): a three service chain, brokers on top of zookeeper.
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+  broker:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+  connect:
+    image: confluentinc/cp-kafka-connect:7.5.0
+    depends_on:
+      - broker

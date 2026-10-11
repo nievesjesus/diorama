@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "title": "Broken link",
+  "subtitle": "One link points at a part that does not exist",
+  "theme": "dark",
+  "size": [1280, 960],
+  "parts": [
+    { "id": "web", "kind": "box", "label": "Web", "at": [0, 0, 0], "size": [3, 3, 2], "color": "blue" },
+    { "id": "db", "kind": "box", "label": "Database", "at": [0, 8, 0], "size": [3, 3, 2], "color": "copper" }
+  ],
+  "links": [
+    { "from": "web", "to": "db", "kind": "tube", "color": "slate" },
+    { "from": "web", "to": "cache", "kind": "tube", "color": "green" }
+  ],
+  "flows": [
+    { "path": ["web", "db"], "kind": "request", "color": "amber", "speed": 8, "count": 2 }
+  ]
+}
