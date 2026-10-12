@@ -400,12 +400,167 @@ body.world-page .hint {
   max-width: 48ch;
 }
 
-body.world-page .hud {
+/* The HUD dock: the radar disc and the first-person toggle, stacked bottom-right
+   above the hint line. The dock itself is transparent to the pointer; only the
+   button takes events, so the radar never swallows an orbit drag. */
+.world-hud-dock {
+  position: absolute;
+  right: 22px;
+  bottom: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
   pointer-events: none;
 }
 
-body.world-page .hud a {
+/* The GTA-style radar: a circular glass instrument. The lower canvas is a live
+   top-down WebGL render of the diorama; the upper one draws the ticks, the
+   north marker and the fixed arrow. The round border clips both. */
+.world-radar {
+  position: relative;
+  width: 176px;
+  height: 176px;
+  border: 1px solid var(--hud-border);
+  border-radius: 50%;
+  background: var(--hud-bg);
+  box-shadow: 0 10px 30px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  overflow: hidden;
+}
+
+/* Shown in first person (or when ?map=1 pins it); hidden in orbit by default.
+   Lite clients skip the whole disc. */
+.world-radar[hidden] {
+  display: none;
+}
+
+.world-radar-canvas,
+.world-radar-instrument {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* A radar screen is punchier than the hero shot: lift the saturation and
+   contrast of the live render so roofs and roads read at a glance, and lay a
+   soft vignette under the ring. */
+.world-radar-canvas {
+  filter: saturate(1.3) contrast(1.22) brightness(1.03);
+}
+
+.world-radar-instrument {
+  pointer-events: none;
+}
+
+/* The first-person toggle: HUD glass, small and reachable, never over the map. */
+.world-fp-toggle {
+  appearance: none;
+  padding: 7px 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  color: var(--hud-ink);
+  font-family: var(--iso-font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
   pointer-events: auto;
+}
+
+.world-fp-toggle:hover {
+  border-color: var(--hud-ink);
+}
+
+.world-fp-toggle:focus-visible {
+  outline: 2px solid var(--hud-ink);
+  outline-offset: 2px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .world-radar,
+  .world-fp-toggle,
+  .world-dest-chip,
+  .world-near {
+    background: var(--hud-bg-solid);
+  }
+}
+
+/* The destination readout: a small glass chip in the dock, under the toggle,
+   showing the straight-line distance to the waypoint in whole metres. */
+.world-dest-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  color: var(--hud-ink);
+  font-family: var(--iso-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.world-dest-chip[hidden] {
+  display: none;
+}
+
+/* The near line: in first person, the nearest named part in reach. It sits
+   centred above the hint, clear of the dock on the right and the readout on
+   the left. Its opacity is set from the live distance, so there is no CSS
+   transition to make a frozen capture non-deterministic. */
+.world-near {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  max-width: min(420px, 60vw);
+  padding: 5px 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  color: var(--hud-ink);
+  font-family: var(--iso-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.world-near[hidden] {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .world-hud-dock {
+    right: 14px;
+    /* Clear of the mobile hint line, which iso.css lifts to bottom: 74px. */
+    bottom: 118px;
+  }
+
+  .world-near {
+    bottom: 104px;
+    max-width: 76vw;
+  }
 }
 
 </style>
@@ -57941,8 +58096,12 @@ function routeCandidates(ax, az, bx, bz) {
   return candidates;
 }
 
-/** Pick the first candidate route that clears every obstacle. */
-function planRoute(ax, az, bx, bz, obstacles, margin) {
+/**
+ * Pick the first candidate cable route that clears every obstacle. This is the
+ * cable-tray planner, not the walk router: see `planRoute` further down for the
+ * walkable-deck waypoint path.
+ */
+function planCableRoute(ax, az, bx, bz, obstacles, margin) {
   const candidates = routeCandidates(ax, az, bx, bz);
   for (const nodes of candidates) {
     if (world_pathClears(nodes, obstacles, margin)) return nodes;
@@ -60349,6 +60508,116 @@ function planWalk(model) {
   };
 }
 
+// ------------------------------------------------------------------- radar
+
+/**
+ * Plan the HUD radar from a built model. Pure: same model, same framing.
+ *
+ * The radar itself is a live top-down GL render of the diorama (runtime.mjs);
+ * what lives here is the math it draws against, so a `?t=` capture of a still
+ * pose is a function of the model and the pose alone. planMinimap reports the
+ * slab fit once - its centre, its bounds, and a scale that puts the longer side
+ * on the unit box - and radarFraming turns one pose into the ortho frame the
+ * renderer uses: where the eye stands, how much ground it takes in, and which
+ * world direction reads as "up" on screen.
+ */
+
+// How far the first-person radar reaches from the walker, in world units to the
+// rim. GTA-local: a window around the player, not the whole slab.
+const RADAR_FP_RADIUS = 15;
+// The orbit radar fits the whole slab plus this much slack, so a corner never
+// lands on the rim.
+const RADAR_ORBIT_MARGIN = 1.12;
+
+function planMinimap(model) {
+  if (!model || typeof model !== 'object' || !model.slab) {
+    throw new Error('planMinimap requires a built world model');
+  }
+  const slab = model.slab.footprint;
+  // The slab's longer side is what the map fits; a square disc then has slack on
+  // the short axis, which keeps a corner off the rim.
+  const spanX = world_round(slab.maxX - slab.minX);
+  const spanZ = world_round(slab.maxZ - slab.minZ);
+  const span = Math.max(spanX, spanZ, 1e-3);
+  const center = [
+    world_round((slab.minX + slab.maxX) / 2),
+    world_round((slab.minZ + slab.maxZ) / 2),
+  ];
+  const scale = world_round(1 / span);
+  const bounds = {
+    minX: world_round(slab.minX),
+    maxX: world_round(slab.maxX),
+    minZ: world_round(slab.minZ),
+    maxZ: world_round(slab.maxZ),
+  };
+  return {
+    version: 2,
+    mode: model.env ? model.env.mode : null,
+    center,
+    scale,
+    span,
+    bounds,
+    slab: { ...bounds },
+  };
+}
+
+// A frame from radarFraming: a world centre, a half-extent in world units (the
+// ortho box spans [-half, half] on both axes) and the world direction that reads
+// as screen-up. In first person that up is the walker's forward, so the map
+// turns under a fixed arrow; in orbit it is north (-z), so the slab sits
+// north-up. Pure.
+function radarFraming(map, view) {
+  if (!map || !Array.isArray(map.center)) {
+    throw new Error('radarFraming requires a minimap plan');
+  }
+  const clean = (value) => {
+    const rounded = world_round(value);
+    return rounded === 0 ? 0 : rounded;
+  };
+  if (view && view.mode === 'fp') {
+    const yaw = Number.isFinite(view.yaw) ? view.yaw : 0;
+    const x = Number.isFinite(view.x) ? view.x : map.center[0];
+    const z = Number.isFinite(view.z) ? view.z : map.center[1];
+    return {
+      mode: 'fp',
+      center: [clean(x), clean(z)],
+      half: RADAR_FP_RADIUS,
+      // The walker's forward on the deck: (-sin yaw, -cos yaw).
+      up: [clean(-Math.sin(yaw)), clean(-Math.cos(yaw))],
+    };
+  }
+  return {
+    mode: 'orbit',
+    center: [map.center[0], map.center[1]],
+    half: clean(Math.max(map.span / 2, RADAR_FP_RADIUS) * RADAR_ORBIT_MARGIN),
+    up: [0, -1],
+  };
+}
+
+/**
+ * A world point in the frame's screen units: +x is screen right, +y is screen
+ * up, and the rim of the ortho box sits at +/-1. Pure, so the runtime's ring,
+ * north marker and camera wedge all share one projection.
+ */
+function radarProject(frame, x, z) {
+  if (!frame || !Array.isArray(frame.center) || !Array.isArray(frame.up)) {
+    throw new Error('radarProject requires a radar frame');
+  }
+  const [ux, uz] = frame.up;
+  // Screen-right is the up vector turned ninety degrees on the deck.
+  const rx = -uz;
+  const rz = ux;
+  const half = frame.half || 1;
+  const dx = x - frame.center[0];
+  const dz = z - frame.center[1];
+  // Normalize -0 away so a capture diff sees a clean zero at dead centre.
+  const clean = (value) => (value === 0 ? 0 : value);
+  return {
+    x: clean((dx * rx + dz * rz) / half),
+    y: clean((dx * ux + dz * uz) / half),
+  };
+}
+
 // Slide the walker along one axis. Moving into a face stops that axis at the
 // face and leaves the other axis free, which is what makes a diagonal run slide
 // along a wall instead of sticking to it. Obstacles are expanded by the walker
@@ -60458,6 +60727,303 @@ function walkStep(state, input, dt, walk) {
     y += (ground + walk.eye - y) * (1 - Math.exp(-WALK_SMOOTH * step));
   }
   return { x, z, y, yaw };
+}
+
+// ------------------------------------------------------------------ waypoint
+//
+// The GTA waypoint layer: a pure shortest path across the walkable deck, so the
+// runtime only ever draws a polyline it was handed and a frozen capture of a
+// route is a function of the walk table and its two endpoints alone.
+//
+// The deck is sampled on a plan-view lattice. A cell is standable when the
+// walker could stand at its centre - on some surface, clear of every solid
+// grown by the walker's radius - and two neighbouring cells are joined only
+// when the rise between them is a legal step AND the straight line between
+// their centres clears every solid that blocks at either height. Climbing is
+// therefore possible up to WALK_STEP and never up a building, which is exactly
+// the "slab plus reachable plates" the walker can actually visit. Snapping
+// drops a query onto the nearest standable cell, so double-clicking a machine
+// lands the waypoint on the ground beside it, never inside its footprint.
+
+// Lattice cell size in world units. One unit keeps the grid aligned with the
+// slab's rounded footprints and stays well under the walker's stride.
+const ROUTE_GRID = 1;
+
+// Neighbour directions, in a fixed order so A* expands ties identically on
+// every machine. The four orthogonal first, then the four diagonals.
+const ROUTE_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+// A solid blocks the walker at a given foot height by the same vertical rule
+// walkSlide uses: too low to matter, or entirely overhead, is not a wall.
+function routeBlocksAt(box, ground, walk) {
+  const clear = Number.isFinite(walk.footClear) ? walk.footClear : WALK_FOOT_CLEAR;
+  const eye = Number.isFinite(walk.eye) ? walk.eye : WALK_EYE;
+  if (box.max[1] <= ground + clear) return false;
+  if (box.min[1] >= ground + eye) return false;
+  return true;
+}
+
+// The walk table a query runs on: the caller's plan, or - when only a model is
+// handed in - a fresh planWalk of it. Keeps planRoute usable either way.
+function routeTable(walk, model) {
+  if (walk && Array.isArray(walk.surfaces) && walk.surfaces.length) return walk;
+  if (model) return planWalk(model);
+  throw new Error('planRoute requires a walk table or a built world model');
+}
+
+// A min-heap ordered by (f, h, cell.index): the integer tie-break that makes two
+// identical queries agree to the byte. No locale compare anywhere.
+class RouteHeap {
+  constructor() {
+    this.items = [];
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  // Negative means a sorts first.
+  static compare(a, b) {
+    if (a.f !== b.f) return a.f - b.f;
+    if (a.h !== b.h) return a.h - b.h;
+    return a.cell.index - b.cell.index;
+  }
+
+  push(item) {
+    const items = this.items;
+    items.push(item);
+    let index = items.length - 1;
+    while (index > 0) {
+      const parent = (index - 1) >> 1;
+      if (RouteHeap.compare(items[index], items[parent]) >= 0) break;
+      const swap = items[index];
+      items[index] = items[parent];
+      items[parent] = swap;
+      index = parent;
+    }
+  }
+
+  pop() {
+    const items = this.items;
+    const top = items[0];
+    const last = items.pop();
+    if (items.length && last !== undefined) {
+      items[0] = last;
+      let index = 0;
+      for (;;) {
+        const left = index * 2 + 1;
+        const right = left + 1;
+        let smallest = index;
+        if (left < items.length && RouteHeap.compare(items[left], items[smallest]) < 0) smallest = left;
+        if (right < items.length && RouteHeap.compare(items[right], items[smallest]) < 0) smallest = right;
+        if (smallest === index) break;
+        const swap = items[index];
+        items[index] = items[smallest];
+        items[smallest] = swap;
+        index = smallest;
+      }
+    }
+    return top;
+  }
+}
+
+// The lattice over a walk table: every standable cell keyed "i,j", plus the
+// step it was built against. Built once per query; pure.
+function routeGrid(walk) {
+  const radius = Number.isFinite(walk.radius) ? walk.radius : WALK_RADIUS;
+  const step = Number.isFinite(walk.step) ? walk.step : WALK_STEP;
+  const bounds = walk.bounds || { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
+  const cols = Math.max(1, Math.ceil((bounds.maxX - bounds.minX) / ROUTE_GRID));
+  const rows = Math.max(1, Math.ceil((bounds.maxZ - bounds.minZ) / ROUTE_GRID));
+  // The clamp the walk solver applies after walls: a centre closer than one
+  // radius to the slab edge is not standable.
+  const minX = bounds.minX + radius;
+  const maxX = bounds.maxX - radius;
+  const minZ = bounds.minZ + radius;
+  const maxZ = bounds.maxZ - radius;
+  const cells = new Map();
+  for (let j = 0; j < rows; j += 1) {
+    for (let i = 0; i < cols; i += 1) {
+      const x = bounds.minX + (i + 0.5) * ROUTE_GRID;
+      const z = bounds.minZ + (j + 0.5) * ROUTE_GRID;
+      if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
+      const y = walkGroundY(walk, x, z);
+      if (y === null) continue;
+      let blocked = false;
+      for (const box of walk.obstacles) {
+        if (!routeBlocksAt(box, y, walk)) continue;
+        // The same inflated AABB walkSlide resolves against: touching the grown
+        // face counts as inside.
+        if (x <= box.min[0] - radius || x >= box.max[0] + radius
+          || z <= box.min[2] - radius || z >= box.max[2] + radius) continue;
+        blocked = true;
+        break;
+      }
+      if (blocked) continue;
+      cells.set(`${i},${j}`, { i, j, x, z, y, index: j * cols + i });
+    }
+  }
+  return { walk, cols, rows, bounds, radius, step, cells };
+}
+
+// The standable cell nearest a plan-view point, ties broken by grid index.
+function routeNearest(grid, x, z) {
+  let best = null;
+  let bestD = Infinity;
+  for (const cell of grid.cells.values()) {
+    const dx = cell.x - x;
+    const dz = cell.z - z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD - 1e-12 || (Math.abs(d - bestD) <= 1e-12 && best && cell.index < best.index)) {
+      bestD = d;
+      best = cell;
+    }
+  }
+  return best;
+}
+
+// Does the straight plan-view line a->b stay clear of every solid that blocks
+// at either endpoint's height? Rects are grown by the walker radius, exactly as
+// the grid blocks a cell, so a clear edge is a line the body could walk.
+function routeEdgeClears(grid, a, b) {
+  const radius = grid.radius;
+  for (const box of grid.walk.obstacles) {
+    if (!routeBlocksAt(box, a.y, grid.walk) && !routeBlocksAt(box, b.y, grid.walk)) continue;
+    const rect = { minX: box.min[0], maxX: box.max[0], minZ: box.min[2], maxZ: box.max[2] };
+    if (!segmentClears(a.x, a.z, b.x, b.z, rect, radius)) return false;
+  }
+  return true;
+}
+
+// Rebuild the cell chain from the came-from map, oldest first.
+function routeChain(came, node) {
+  const path = [];
+  let cursor = node;
+  while (cursor) {
+    path.push(cursor);
+    cursor = came.get(`${cursor.i},${cursor.j}`);
+  }
+  return path.reverse();
+}
+
+// A* from start to the goal cell. With `reach` the search ignores the goal cell
+// and instead returns the reachable cell closest to the target point (ties by
+// index), which is the nearest ground a walker can actually get to when the
+// target itself sits on a surface too high to climb. Returns null when nothing
+// is reachable.
+function routeAStar(grid, start, goal, reach, targetX, targetZ) {
+  const key = (cell) => `${cell.i},${cell.j}`;
+  const goalH = (cell) => Math.hypot(cell.x - goal.x, cell.z - goal.z);
+  const came = new Map();
+  const gScore = new Map([[key(start), 0]]);
+  const closed = new Set();
+  const open = new RouteHeap();
+  const startH = goalH(start);
+  open.push({ cell: start, g: 0, h: startH, f: startH });
+  let best = start;
+  let bestD = Math.hypot(start.x - targetX, start.z - targetZ);
+  while (open.size) {
+    const current = open.pop();
+    const currentKey = key(current.cell);
+    if (closed.has(currentKey)) continue;
+    closed.add(currentKey);
+    if (reach) {
+      const distance = Math.hypot(current.cell.x - targetX, current.cell.z - targetZ);
+      if (distance < bestD - 1e-9
+        || (Math.abs(distance - bestD) <= 1e-9 && current.cell.index < best.index)) {
+        bestD = distance;
+        best = current.cell;
+      }
+    } else if (current.cell.index === goal.index) {
+      return routeChain(came, current.cell);
+    }
+    for (const [di, dj] of ROUTE_DIRS) {
+      const neighbor = grid.cells.get(`${current.cell.i + di},${current.cell.j + dj}`);
+      if (!neighbor) continue;
+      if (!(neighbor.y - current.cell.y <= grid.step + 1e-9)) continue;
+      if (!routeEdgeClears(grid, current.cell, neighbor)) continue;
+      const neighborKey = key(neighbor);
+      if (closed.has(neighborKey)) continue;
+      const diagonal = di !== 0 && dj !== 0;
+      const tentative = current.g + (diagonal ? Math.SQRT2 : 1) * ROUTE_GRID;
+      const known = gScore.get(neighborKey);
+      if (known !== undefined && tentative >= known) continue;
+      gScore.set(neighborKey, tentative);
+      came.set(neighborKey, current.cell);
+      const h = goalH(neighbor);
+      open.push({ cell: neighbor, g: tentative, h, f: tentative + h });
+    }
+  }
+  if (reach) return routeChain(came, best);
+  return null;
+}
+
+// Thin the grid path with greedy line-of-sight: from an anchor, snap to the
+// farthest later cell the anchor can see in a straight line that stays clear.
+// Every emitted segment is checked, so smoothing never cuts a corner the grid
+// would not. Deterministic: farthest first, no randomness.
+function routeSmooth(grid, cells) {
+  if (cells.length <= 2) return cells;
+  const out = [cells[0]];
+  let anchor = 0;
+  while (anchor < cells.length - 1) {
+    let next = anchor + 1;
+    for (let index = cells.length - 1; index > anchor; index -= 1) {
+      if (routeEdgeClears(grid, cells[anchor], cells[index])) {
+        next = index;
+        break;
+      }
+    }
+    out.push(cells[next]);
+    anchor = next;
+  }
+  return out;
+}
+
+// Keep -0 out of the returned points so a capture diff reads a clean zero.
+function routeClean(value) {
+  const rounded = world_round(value);
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
+ * Shortest walkable path from `from` to `to`, both plan-view [x, z] world
+ * points. `walk` is a planWalk table (or the model, which is then planned).
+ * Returns a polyline of [x, z] points snapped onto the walkable deck, or null
+ * when either end or the whole path is unreachable. Pure and deterministic.
+ *
+ * `options.reach` relaxes the goal: when the nearest standable cell to `to` is
+ * itself unreachable (a part sitting on a tier taller than the walk step), the
+ * path ends at the nearest ground the walker can actually reach instead of
+ * returning null. The runtime uses it so a waypoint always lands somewhere the
+ * player can walk to; the default keeps the strict "null when walled off".
+ */
+function planRoute(walk, model, from, to, options = {}) {
+  if (!Array.isArray(from) || !Array.isArray(to)) return null;
+  const table = routeTable(walk, model);
+  const grid = routeGrid(table);
+  if (!grid.cells.size) return null;
+  const start = routeNearest(grid, Number(from[0]), Number(from[1]));
+  const goal = routeNearest(grid, Number(to[0]), Number(to[1]));
+  if (!start || !goal) return null;
+  const cells = routeAStar(
+    grid, start, goal, Boolean(options && options.reach), Number(to[0]), Number(to[1]),
+  );
+  if (!cells) return null;
+  return routeSmooth(grid, cells).map((cell) => [routeClean(cell.x), routeClean(cell.z)]);
+}
+
+/**
+ * Snap a plan-view [x, z] point to the nearest walkable [x, z], or null when
+ * the deck offers nowhere to stand. The point a double-click on a part should
+ * aim for, before the route is planned to it.
+ */
+function snapWalkPoint(walk, model, x, z) {
+  const table = routeTable(walk, model);
+  const grid = routeGrid(table);
+  const cell = routeNearest(grid, Number(x), Number(z));
+  if (!cell) return null;
+  return [routeClean(cell.x), routeClean(cell.z)];
 }
 
 function buildWorld(scene, options = {}) {
@@ -60658,7 +61224,7 @@ function buildWorld(scene, options = {}) {
     const toNormal = WORLD_PORT_NORMAL[toPort] || [0, 0];
     const lead = [a[0] + fromNormal[0] * tuning.portOffset, a[2] + fromNormal[1] * tuning.portOffset];
     const tail = [b[0] + toNormal[0] * tuning.portOffset, b[2] + toNormal[1] * tuning.portOffset];
-    const plan = planRoute(
+    const plan = planCableRoute(
       lead[0], lead[1], tail[0], tail[1],
       obstaclesExcept(fromPart.id, toPart.id),
       tuning.clearMargin,
@@ -60997,11 +61563,22 @@ function world_query() {
   const rawFz = params.get('fz');
   const fx = rawFx === null || rawFx === '' ? null : Number(rawFx);
   const fz = rawFz === null || rawFz === '' ? null : Number(rawFz);
+  // The HUD radar: on by default in first person, off while orbiting, so it
+  // never clutters the hero shot. ?map=1 / ?map=0 pin it on or off for a
+  // capture, overriding the mode default.
+  const rawMap = params.get('map');
+  const map = rawMap === '1' || rawMap === 'true' ? 'on'
+    : rawMap === '0' || rawMap === 'false' ? 'off'
+      : null;
   return {
+    map,
     env: env === 'warehouse' || env === 'city' || env === 'auto' ? env : null,
     frozen: frozen !== null && Number.isFinite(frozen) ? frozen : null,
     cam: params.get('cam') || null,
     focus: params.get('focus') || null,
+    // A preset waypoint, by part id (or a label slug like "consumer-a"). Used by
+    // captures; the runtime validates it and ignores anything unknown.
+    dest: params.get('dest') || null,
     fill: fill !== null && Number.isFinite(fill) ? world_clamp(fill, 0.1, 4) : null,
     fx: fx !== null && Number.isFinite(fx) ? fx : null,
     fz: fz !== null && Number.isFinite(fz) ? fz : null,
@@ -63834,19 +64411,45 @@ function world_focusFraming(part, camera, fill = WORLD_FOCUS_FILL) {
 
 // --------------------------------------------------------------------- HUD
 
+// How close (plan-view units) the walker has to be to a named part before the
+// near line names it. The fade ramp is defined below; this is the far edge.
+const WORLD_NEAR_REACH = 6;
+
+// Resolve a ?dest= token to a part. Exact id first, then a normalised id, then
+// a normalised label, so both "consumerA" and "consumer-a" land on Consumer A.
+// Returns null for anything unknown, so a bad capture param is simply ignored.
+function world_resolvePart(model, token) {
+  if (!token || !model || !Array.isArray(model.parts)) return null;
+  const normalize = (value) => String(value).toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const exact = model.parts.find((part) => part.id === token);
+  if (exact) return exact;
+  const want = normalize(token);
+  return model.parts.find((part) => normalize(part.id) === want)
+    || model.parts.find((part) => part.label && normalize(part.label) === want)
+    || null;
+}
+
 function world_hud(model, stats, debug) {
   const hud = document.querySelector('.hud');
   if (!hud) return null;
   const hint = hud.querySelector('.hint');
   if (hint) hint.textContent = WORLD_HINT_ORBIT;
+  // The near line is part of the walk HUD, not a debug aid, so it is always
+  // mounted and simply hidden until a named part is in reach.
+  const near = document.createElement('div');
+  near.className = 'world-near';
+  near.hidden = true;
+  hud.appendChild(near);
   // The counters are a development aid. They are not part of the picture, so
   // nothing is appended at all unless ?debug=1 asked for them.
-  if (!debug) return { hint, badge: null };
+  if (!debug) return { hint, near, badge: null };
   const badge = document.createElement('div');
   badge.className = 'world-stats';
   badge.textContent = `${stats.parts} parts · ${stats.links} links · ${stats.pulses} pulses`;
   hud.appendChild(badge);
-  return { hint, badge };
+  return { hint, near, badge };
 }
 
 // ------------------------------------------------------------ label clamp
@@ -63894,6 +64497,253 @@ function world_labelClamp(distance, tan, reach, fp) {
   // hero size, so undoing `raw` and reapplying the clamped factor is what
   // pins the on-screen size inside the band.
   return { scale: clamped / raw, opacity };
+}
+
+// --------------------------------------------------------------- radar HUD
+//
+// The GTA-style radar: a second, tiny WebGL context bound to a HUD <canvas>
+// that draws the *same* stage from straight overhead - real roofs, roads and
+// plates, never a schematic. A second renderer rather than a scissored corner
+// of the main one on purpose: the main pass keeps its exact draw-call count,
+// its bloom and its tone mapping, while the radar runs antialias-off,
+// shadow-off, at 1x. The pure framing (planMinimap / radarFraming /
+// radarProject) decides where the eye stands and which way is up; this half
+// owns the GL camera, the instrument ring and the mode wiring.
+//
+// First person rotates the map under a fixed arrow (forward is up); orbit sits
+// north-up and fits the whole slab. The disc depends on nothing but the live
+// pose, so a `?t=` capture of a still frame draws it identically every pass.
+
+const WORLD_RADAR_CSS = 176;      // CSS px of the disc; mirrored by world.css
+const WORLD_RADAR_DPR = 2;        // cap on the radar's device ratio: crisp, still cheap
+const WORLD_RADAR_RIM = 0.86;     // the ring, as a fraction of the disc radius
+const WORLD_RADAR_EYE = 140;      // ortho eye height above the deck, world units
+const WORLD_RADAR_NEAR = 0.1;
+const WORLD_RADAR_FAR = 420;
+const WORLD_RADAR_BACKDROP = { dark: '#05080d', light: '#39443f' };
+const WORLD_RADAR_INK = { dark: '#e8edf4', light: '#22262c' };
+
+// The radar's device ratio: match the screen so the drawing buffer lines up with
+// the disc's CSS box, capped so a 3x display does not pay 3x for a 176px disc.
+function world_radarRatio() {
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  return Math.min(WORLD_RADAR_DPR, dpr);
+}
+
+// Mount the HUD dock: the radar disc (a GL canvas under a 2D instrument canvas)
+// and the first-person toggle, stacked bottom-right above the hint line. A
+// missing document is a headless build, not a crash; a missing 2D context just
+// drops the ring and keeps the live render.
+function world_radarMount(hud) {
+  if (!hud || typeof document === 'undefined') return null;
+  const dock = document.createElement('div');
+  dock.className = 'world-hud-dock';
+
+  const el = document.createElement('div');
+  el.className = 'world-radar';
+  el.hidden = true;
+  el.setAttribute('role', 'img');
+  el.setAttribute('aria-label', 'Top-down radar of the diorama');
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'world-radar-canvas';
+  const instrument = document.createElement('canvas');
+  instrument.className = 'world-radar-instrument';
+  instrument.setAttribute('aria-hidden', 'true');
+  el.appendChild(canvas);
+  el.appendChild(instrument);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'world-fp-toggle';
+  button.setAttribute('aria-pressed', 'false');
+  button.textContent = 'First person (V)';
+
+  // The destination readout: a small glass chip under the toggle, in the dock
+  // so it can never fight the hint or the map.
+  const chip = document.createElement('div');
+  chip.className = 'world-dest-chip';
+  chip.hidden = true;
+
+  dock.appendChild(el);
+  dock.appendChild(button);
+  dock.appendChild(chip);
+  hud.appendChild(dock);
+
+  const ictx = instrument.getContext('2d');
+  if (!ictx) el.removeChild(instrument);
+  return { dock, el, canvas, instrument, ictx, button, chip };
+}
+
+// The instrument ring drawn over the live render: ticks, the north marker that
+// swings round the rim as the map turns, and the fixed player arrow. Built from
+// the frame's own "up", so it always agrees with the render beneath it. `wedge`
+// (orbit only) is a small camera-direction frustum, in the frame's screen units.
+function world_radarRing(radar, frame, dark, wedge, route) {
+  const { instrument, ictx } = radar;
+  if (!ictx) return;
+  const dpr = world_radarRatio();
+  const W = Math.round(WORLD_RADAR_CSS * dpr);
+  if (instrument.width !== W || instrument.height !== W) {
+    instrument.width = W;
+    instrument.height = W;
+  }
+  const c = W / 2;
+  const rim = c * WORLD_RADAR_RIM;
+  const ink = dark ? WORLD_RADAR_INK.dark : WORLD_RADAR_INK.light;
+  const line = Math.max(1, dpr);
+
+  ictx.setTransform(1, 0, 0, 1, 0, 0);
+  ictx.clearRect(0, 0, W, W);
+
+  // Twelve minor ticks with a longer mark at each quarter, just inside the CSS
+  // glass border.
+  ictx.lineWidth = line;
+  ictx.strokeStyle = dark ? 'rgba(232,237,244,0.38)' : 'rgba(34,38,44,0.32)';
+  for (let index = 0; index < 24; index += 1) {
+    const angle = (index / 24) * Math.PI * 2;
+    const long = index % 6 === 0;
+    const sx = Math.sin(angle);
+    const sy = -Math.cos(angle);
+    const outer = c - 3.5 * dpr;
+    const inner = outer - (long ? 6 : 3) * dpr;
+    ictx.beginPath();
+    ictx.moveTo(c + sx * inner, c + sy * inner);
+    ictx.lineTo(c + sx * outer, c + sy * outer);
+    ictx.stroke();
+  }
+
+  if (wedge) {
+    // Orbit: a translucent frustum pointing the way the camera looks.
+    const ax = c + wedge.x * rim;
+    const ay = c - wedge.y * rim;
+    const heading = Math.atan2(-wedge.dy, wedge.dx);
+    const reach = rim * 0.42;
+    const spread = 0.4;
+    ictx.beginPath();
+    ictx.moveTo(ax, ay);
+    ictx.lineTo(ax + Math.cos(heading - spread) * reach, ay + Math.sin(heading - spread) * reach);
+    ictx.lineTo(ax + Math.cos(heading + spread) * reach, ay + Math.sin(heading + spread) * reach);
+    ictx.closePath();
+    ictx.fillStyle = dark ? 'rgba(244,209,122,0.22)' : 'rgba(111,82,23,0.14)';
+    ictx.fill();
+    ictx.lineWidth = line;
+    ictx.strokeStyle = dark ? 'rgba(244,209,122,0.72)' : 'rgba(111,82,23,0.55)';
+    ictx.stroke();
+  } else {
+    // First person: a fixed arrow at the centre, always pointing up.
+    const r = 6.5 * dpr;
+    ictx.beginPath();
+    ictx.moveTo(c, c - r * 1.2);
+    ictx.lineTo(c - r * 0.86, c + r);
+    ictx.lineTo(c, c + r * 0.42);
+    ictx.lineTo(c + r * 0.86, c + r);
+    ictx.closePath();
+    ictx.fillStyle = dark ? '#f4d17a' : '#6f5217';
+    ictx.fill();
+    ictx.lineWidth = line;
+    ictx.strokeStyle = dark ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.85)';
+    ictx.stroke();
+  }
+
+  // The waypoint: the same walkable polyline the main pass draws on the deck,
+  // projected into the disc. Clipped to the ring so it never spills over the
+  // glass border, with the destination dot clamped to the rim when it lies
+  // beyond the window - GTA keeps a distant waypoint on the edge, so the
+  // bearing is always readable.
+  if (route && route.points && route.points.length > 1) {
+    const trace = () => {
+      ictx.beginPath();
+      for (let index = 0; index < route.points.length; index += 1) {
+        const px = c + route.points[index].x * rim;
+        const py = c - route.points[index].y * rim;
+        if (index === 0) ictx.moveTo(px, py);
+        else ictx.lineTo(px, py);
+      }
+    };
+    ictx.save();
+    ictx.beginPath();
+    ictx.arc(c, c, rim, 0, Math.PI * 2);
+    ictx.clip();
+    ictx.lineJoin = 'round';
+    ictx.lineCap = 'round';
+    // A dark casing under the amber line, so the waypoint reads even where the
+    // deck already carries yellow road paint.
+    ictx.lineWidth = Math.max(4 * dpr, 4);
+    ictx.strokeStyle = dark ? 'rgba(8,10,14,0.75)' : 'rgba(20,18,12,0.55)';
+    trace();
+    ictx.stroke();
+    ictx.lineWidth = Math.max(2 * dpr, 2);
+    ictx.strokeStyle = dark ? 'rgba(255,210,63,0.98)' : 'rgba(224,138,0,0.98)';
+    trace();
+    ictx.stroke();
+    ictx.restore();
+  }
+  if (route && route.dest) {
+    const reach = Math.hypot(route.dest.x, route.dest.y);
+    const anchor = reach > 1 ? 1 / reach : 1;
+    const dx = c + route.dest.x * anchor * rim;
+    const dy = c - route.dest.y * anchor * rim;
+    ictx.beginPath();
+    ictx.arc(dx, dy, 4.5 * dpr, 0, Math.PI * 2);
+    ictx.fillStyle = dark ? '#ffd23f' : '#e08a00';
+    ictx.fill();
+    ictx.lineWidth = line;
+    ictx.strokeStyle = dark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.9)';
+    ictx.stroke();
+  }
+
+  // North, pinned to the rim at true north (world -z). Derived from the frame
+  // up, so it stays glued to the map whichever way the map is turned.
+  const northX = -frame.up[0];
+  const northY = -frame.up[1];
+  const radius = c - 13 * dpr;
+  const nx = c + northX * radius;
+  const ny = c - northY * radius;
+  ictx.beginPath();
+  ictx.arc(nx, ny, 8 * dpr, 0, Math.PI * 2);
+  ictx.fillStyle = dark ? 'rgba(20,24,30,0.9)' : 'rgba(253,251,246,0.94)';
+  ictx.fill();
+  ictx.lineWidth = line;
+  ictx.strokeStyle = dark ? 'rgba(232,237,244,0.5)' : 'rgba(34,38,44,0.35)';
+  ictx.stroke();
+  ictx.fillStyle = ink;
+  ictx.font = `${Math.round(9.5 * dpr)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  ictx.textAlign = 'center';
+  ictx.textBaseline = 'middle';
+  ictx.fillText('N', nx, ny + 0.5 * dpr);
+}
+
+// Try the second context. A machine that refuses it keeps a glass disc: the
+// radar is an aid, never load-bearing.
+function world_radarGL(canvas, frozen, dark) {
+  try {
+    const renderer = new WebGLRenderer({
+      canvas,
+      antialias: false,
+      alpha: false,
+      powerPreference: 'low-power',
+      preserveDrawingBuffer: frozen,
+    });
+    // The drawing buffer has to match the disc's CSS box on the device, or the
+    // compositor drops the canvas on a Retina screen. Pixel ratio and size are
+    // set together so the buffer is WORLD_RADAR_CSS * ratio, while the ortho
+    // frustum stays in world units and is unaffected.
+    renderer.setPixelRatio(world_radarRatio());
+    renderer.setSize(WORLD_RADAR_CSS, WORLD_RADAR_CSS);
+    renderer.shadowMap.enabled = false;
+    renderer.outputColorSpace = SRGBColorSpace;
+    renderer.toneMapping = ACESFilmicToneMapping;
+    renderer.toneMappingExposure = dark ? 1.5 : 1.15;
+    renderer.setClearColor(new Color(WORLD_RADAR_BACKDROP[dark ? 'dark' : 'light']), 1);
+    const camera = new OrthographicCamera(-1, 1, 1, -1, WORLD_RADAR_NEAR, WORLD_RADAR_FAR);
+    // Layer 0 only: the runtime parks sprites and the paper signs on layer 1 so
+    // the radar never picks up label chips or billboards floating over the roofs.
+    camera.layers.set(0);
+    return { renderer, camera };
+  } catch {
+    return null;
+  }
 }
 
 // ----------------------------------------------------------------- fallback
@@ -64026,6 +64876,17 @@ function world_mount(options = {}) {
   const overlays = world_buildLinks(root, model, material, glowTexture);
   const flows = world_buildFlows(root, model, glowTexture);
 
+  // The radar is a second pass over the same stage, so the one thing it must
+  // not draw is the overlay furniture: label chips, halos and the paper signs
+  // would only smear the top-down map. Park them on layer 1. The hero camera
+  // enables every layer and so is byte-for-byte unaffected; the radar camera
+  // keeps to layer 0.
+  camera.layers.enableAll();
+  stage.traverse((object) => {
+    if (object.isSprite) object.layers.set(1);
+    else if (object.isMesh && object.renderOrder >= 4) object.layers.set(1);
+  });
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.075;
@@ -64071,6 +64932,10 @@ function world_mount(options = {}) {
     saved: null,
     bob: 0,
     fpFov: WORLD_FP_FOV,
+    // The waypoint: { id, part, point, route } once one is set, else null. The
+    // route is planned from the walk table, not the live player, so it only
+    // changes when the destination does (GTA keeps the line as drawn).
+    dest: null,
   };
 
   // A teleport (`?cam=fp&fx=&fz=`) lands the eye directly on the surface there,
@@ -64083,6 +64948,296 @@ function world_mount(options = {}) {
 
   const setWalkHint = (on) => {
     if (hud && hud.hint) hud.hint.textContent = on ? WORLD_HINT_WALK : WORLD_HINT_ORBIT;
+  };
+
+  // ---------------------------------------------------------------- radar
+  // The disc lives in the HUD and redraws only while it is on screen. The plan
+  // is pure and built once; the frame is reframed from the live pose each draw,
+  // and the GL pass is skipped whenever the disc is hidden, so a client that
+  // never shows it never pays for it.
+  const hudEl = typeof document === 'undefined' ? null : document.querySelector('.hud');
+  const radar = world_radarMount(hudEl);
+  const mapPlan = planMinimap(model);
+  // null = follow the mode (on in first person, off in orbit); ?map= pins it.
+  let mapForced = query.map;
+  const mapShown = () => (mapForced === 'on' ? true : mapForced === 'off' ? false : state.mode === 'fp');
+  // The radar costs a second context, so lite (small or data-saving) clients
+  // keep the toggle but turn the disc itself off.
+  const radarGL = radar && !lite ? world_radarGL(radar.canvas, frozen, dark) : null;
+  const radarShown = () => mapShown() && Boolean(radarGL);
+  const applyMapVisibility = () => {
+    if (radar) radar.el.hidden = !radarShown();
+  };
+  let radarDrawCalls = 0;
+  const radarDir = new Vector3();
+  const drawRadar = () => {
+    if (!radar) return;
+    const shown = radarShown();
+    radar.el.hidden = !shown;
+    if (!shown) return;
+    const frame = radarFraming(
+      mapPlan,
+      state.mode === 'fp'
+        ? { mode: 'fp', x: state.fp.x, z: state.fp.z, yaw: state.yaw }
+        : { mode: 'orbit' },
+    );
+    // Orbit: a small wedge pointing the way the camera looks, anchored at the
+    // camera's spot on the deck and clamped so it stays on the disc.
+    let wedge = null;
+    if (frame.mode === 'orbit') {
+      camera.getWorldDirection(radarDir);
+      const here = radarProject(frame, camera.position.x, camera.position.z);
+      const ahead = radarProject(frame, camera.position.x + radarDir.x, camera.position.z + radarDir.z);
+      const len = Math.hypot(ahead.x - here.x, ahead.y - here.y) || 1;
+      const reach = Math.hypot(here.x, here.y);
+      const anchor = reach > 0.8 ? 0.8 / reach : 1;
+      wedge = {
+        x: here.x * anchor,
+        y: here.y * anchor,
+        dx: (ahead.x - here.x) / len,
+        dy: (ahead.y - here.y) / len,
+      };
+    }
+    // The live top-down pass. radarShown() already proved the second context
+    // came up; the guard is belt-and-braces for a context lost between frames.
+    if (radarGL) {
+      const eye = radarGL.camera;
+      eye.left = -frame.half;
+      eye.right = frame.half;
+      eye.top = frame.half;
+      eye.bottom = -frame.half;
+      eye.up.set(frame.up[0], 0, frame.up[1]);
+      eye.position.set(frame.center[0], WORLD_RADAR_EYE, frame.center[1]);
+      eye.lookAt(frame.center[0], 0, frame.center[1]);
+      eye.updateProjectionMatrix();
+      // From straight overhead the sky background is a screen gradient and the
+      // fog a distance haze; both would only smear the map, so the disc gets a
+      // flat deck for the length of the radar pass.
+      const fog = stage.fog;
+      const background = stage.background;
+      stage.fog = null;
+      stage.background = null;
+      radarGL.renderer.info.reset();
+      radarGL.renderer.render(stage, eye);
+      radarDrawCalls = radarGL.renderer.info.render.calls;
+      stage.fog = fog;
+      stage.background = background;
+    }
+    // The waypoint on the map: the same polyline the ground ribbon draws,
+    // projected through the frame. A destination with no route (walled off)
+    // still shows its dot, so the player knows where it is trying to go.
+    let routeDraw = null;
+    if (state.dest && state.dest.point) {
+      const points = state.dest.route && state.dest.route.length
+        ? state.dest.route.map((point) => radarProject(frame, point[0], point[1]))
+        : [];
+      routeDraw = { points, dest: radarProject(frame, state.dest.point[0], state.dest.point[1]) };
+    }
+    world_radarRing(radar, frame, dark, wedge, routeDraw);
+  };
+  const syncRadarButton = () => {
+    if (!radar) return;
+    const fp = state.mode === 'fp';
+    radar.button.textContent = fp ? 'Orbit (V)' : 'First person (V)';
+    radar.button.setAttribute('aria-pressed', fp ? 'true' : 'false');
+  };
+  if (radar) {
+    radar.button.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (state.mode === 'fp') exitFirstPerson();
+      else enterFirstPerson();
+    });
+  }
+
+  // ------------------------------------------------------------- waypoint
+  // The destination layer: a part is picked (double-click), the pure router
+  // plans a walkable path to the nearest standable ground beside it, and the
+  // runtime draws that path as a ground ribbon plus a pin over the part. The
+  // radar draws the same polyline on its instrument canvas from radarProject.
+  // The route is planned once, when the destination changes: it follows the
+  // walk model, never the player, so walking off it leaves it exactly as drawn.
+  const routeVisuals = { ribbon: null, pin: null };
+  // The ribbon is one geometry with two vertex-coloured layers: a dark casing
+  // and a bright fill just above it, so it reads against both pale decks and
+  // the warehouse's own yellow paint without a second draw call.
+  const ribbonMaterial = new MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    side: DoubleSide,
+    // A transparent double-sided material otherwise draws twice (back then
+    // front); the ribbon is a flat decal, so one pass is exact and keeps the
+    // whole waypoint to two draw calls.
+    forceSinglePass: true,
+    fog: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const pinMaterial = new MeshBasicMaterial({ color: new Color(dark ? '#ffd23f' : '#e08a00'), fog: true });
+
+  const linkCounts = new Map();
+  for (const link of model.links) {
+    linkCounts.set(link.from, (linkCounts.get(link.from) || 0) + 1);
+    linkCounts.set(link.to, (linkCounts.get(link.to) || 0) + 1);
+  }
+  const linkCount = (id) => linkCounts.get(id) || 0;
+
+  const routeOrigin = () => (state.mode === 'fp'
+    ? [state.fp.x, state.fp.z]
+    : [camera.position.x, camera.position.z]);
+
+  const clearRoute = () => {
+    for (const key of ['ribbon', 'pin']) {
+      const mesh = routeVisuals[key];
+      if (!mesh) continue;
+      root.remove(mesh);
+      mesh.geometry.dispose();
+      routeVisuals[key] = null;
+    }
+  };
+
+  // A thin mitered ribbon on the deck: one BufferGeometry, one draw call. The
+  // y comes from the walk table itself, so the line climbs a plate exactly
+  // where a walker would. Two layers (casing under fill) share the geometry.
+  const buildRibbon = (points) => {
+    const layers = [
+      { half: 0.19, lift: 0.035, rgb: dark ? [0.05, 0.05, 0.04] : [0.04, 0.04, 0.04] },
+      { half: 0.12, lift: 0.05, rgb: dark ? [1.0, 0.83, 0.28] : [0.85, 0.55, 0.02] },
+    ];
+    const positions = [];
+    const colors = [];
+    for (const layer of layers) {
+      const left = [];
+      const right = [];
+      for (let index = 0; index < points.length; index += 1) {
+        const [x, z] = points[index];
+        const prev = points[index - 1] || points[index];
+        const next = points[index + 1] || points[index];
+        let tx = next[0] - prev[0];
+        let tz = next[1] - prev[1];
+        const length = Math.hypot(tx, tz) || 1;
+        tx /= length;
+        tz /= length;
+        const y = (walkGroundY(walk, x, z) ?? 0) + layer.lift;
+        left.push([x - tz * layer.half, y, z + tx * layer.half]);
+        right.push([x + tz * layer.half, y, z - tx * layer.half]);
+      }
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const quad = [left[index], right[index], left[index + 1], left[index + 1], right[index], right[index + 1]];
+        for (const vertex of quad) {
+          positions.push(vertex[0], vertex[1], vertex[2]);
+          colors.push(layer.rgb[0], layer.rgb[1], layer.rgb[2]);
+        }
+      }
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+    geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+    return geometry;
+  };
+
+  const buildPin = (part) => {
+    const mesh = new Mesh(new ConeGeometry(0.24, 0.5, 4), pinMaterial);
+    mesh.rotation.x = Math.PI; // apex down, like a dropped map pin
+    mesh.position.set(part.pos[0], part.pos[1] + part.size[1] / 2 + 0.55, part.pos[2]);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    // Layer 1 is the hero camera's alone; the radar GL pass keeps to layer 0,
+    // because the instrument draws the waypoint itself.
+    mesh.layers.set(1);
+    mesh.renderOrder = 2;
+    return mesh;
+  };
+
+  const updateDestChip = () => {
+    if (!radar || !radar.chip) return;
+    if (!state.dest || !state.dest.point) {
+      radar.chip.hidden = true;
+      return;
+    }
+    const origin = routeOrigin();
+    const distance = Math.hypot(state.dest.point[0] - origin[0], state.dest.point[1] - origin[1]);
+    const text = `${Math.round(distance)} m`;
+    if (radar.chip.textContent !== text) radar.chip.textContent = text;
+    radar.chip.hidden = false;
+  };
+
+  const setDestination = (id) => {
+    const part = id ? world_resolvePart(model, id) : null;
+    if (!part) {
+      // A null id clears; an unknown one is ignored, destination untouched.
+      if (!id) {
+        state.dest = null;
+        clearRoute();
+        updateDestChip();
+      }
+      return;
+    }
+    let point = snapWalkPoint(walk, model, part.pos[0], part.pos[2]);
+    // `reach` lets the waypoint land on the ground beside a part on a tier the
+    // walker cannot climb (postgres on the three-tier platform), rather than
+    // drawing nothing. When a route is planned, its end is the real destination.
+    const route = point ? planRoute(walk, model, routeOrigin(), point, { reach: true }) : null;
+    if (route && route.length) point = route[route.length - 1];
+    state.dest = { id: part.id, part, point, route };
+    clearRoute();
+    if (route && route.length > 1) {
+      const ribbon = new Mesh(buildRibbon(route), ribbonMaterial);
+      ribbon.castShadow = false;
+      ribbon.receiveShadow = false;
+      ribbon.layers.set(1);
+      ribbon.renderOrder = 2;
+      routeVisuals.ribbon = ribbon;
+      root.add(ribbon);
+    }
+    const pin = buildPin(part);
+    routeVisuals.pin = pin;
+    root.add(pin);
+    updateDestChip();
+  };
+
+  // The near line: in first person, the nearest named part with links inside the
+  // reach, faded by distance. Pure in the camera pose, so a frozen capture is
+  // the same frame every run; hidden whenever there is nothing in range.
+  let nearId = null;
+  const updateNearInfo = () => {
+    const near = hud && hud.near;
+    if (!near) return;
+    if (state.mode !== 'fp') {
+      if (!near.hidden) {
+        near.hidden = true;
+        near.style.opacity = '0';
+      }
+      nearId = null;
+      return;
+    }
+    let best = null;
+    let bestD = Infinity;
+    for (const part of model.parts) {
+      if (!part.label || linkCount(part.id) === 0) continue;
+      const distance = Math.hypot(part.pos[0] - state.fp.x, part.pos[2] - state.fp.z);
+      if (distance <= WORLD_NEAR_REACH && distance < bestD) {
+        bestD = distance;
+        best = part;
+      }
+    }
+    if (!best) {
+      if (!near.hidden) {
+        near.hidden = true;
+        near.style.opacity = '0';
+      }
+      nearId = null;
+      return;
+    }
+    if (nearId !== best.id) {
+      near.textContent = `Near: ${best.label} - ${linkCount(best.id)} links`;
+      nearId = best.id;
+    }
+    const opacity = world_clamp((WORLD_NEAR_REACH - bestD) / 1.4, 0, 1);
+    near.style.opacity = String(opacity);
+    near.hidden = opacity <= 0.01;
   };
 
   const flyTo = (framing) => {
@@ -64104,21 +65259,30 @@ function world_mount(options = {}) {
   const pointer = new Vector2();
 
   renderer.domElement.addEventListener('dblclick', (event) => {
-    if (state.mode === 'fp') return;
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    const fp = state.mode === 'fp';
+    if (fp) {
+      // Pointer lock hides the cursor, so in first person the pick is always
+      // the crosshair: the centre of the screen.
+      pointer.set(0, 0);
+    } else {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(built.picks, false);
     if (hits.length) {
       const part = hits[0].object.userData.world_part;
+      // Both modes set the waypoint; orbit also keeps its focus-on-part move.
+      setDestination(part.id);
+      if (fp) return;
       if (state.focused === part.id) {
         resetView();
         return;
       }
       state.focused = part.id;
       flyTo(world_focusFraming(part, camera));
-    } else {
+    } else if (!fp) {
       resetView();
     }
   });
@@ -64149,6 +65313,8 @@ function world_mount(options = {}) {
       }
     }
     setWalkHint(true);
+    applyMapVisibility();
+    syncRadarButton();
     if (hud && hud.badge) hud.badge.textContent = 'first person · WASD walk · shift run · Esc exit';
   };
 
@@ -64163,6 +65329,8 @@ function world_mount(options = {}) {
       controls.update();
     }
     setWalkHint(false);
+    applyMapVisibility();
+    syncRadarButton();
     if (hud && hud.badge) {
       hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${model.stats.pulses} pulses`;
     }
@@ -64177,8 +65345,18 @@ function world_mount(options = {}) {
       event.preventDefault();
     } else if (key === 'escape' && state.mode === 'fp') {
       exitFirstPerson();
+    } else if (key === 'm') {
+      // Toggle the radar from whatever it currently shows.
+      mapForced = mapShown() ? 'off' : 'on';
+      applyMapVisibility();
+      drawRadar();
+      event.preventDefault();
     } else if (key === 'r' && state.mode !== 'fp') {
       resetView();
+    } else if (key === 'x') {
+      // Clear the waypoint. Harmless in orbit, where there may be none.
+      setDestination(null);
+      event.preventDefault();
     } else if (key === 'e' && state.mode !== 'fp') {
       resetView();
     } else if ((key === '+' || key === '=') && state.mode !== 'fp') {
@@ -64417,6 +65595,15 @@ function world_mount(options = {}) {
       state.focused = part.id;
     }
   }
+  // The mode (and so the auto default) is settled now: show or hide the radar
+  // and label the toggle before the first frame, so a frozen capture has both in
+  // the right state.
+  applyMapVisibility();
+  syncRadarButton();
+
+  // A preset waypoint (?dest=), validated against the parts. Ignored when
+  // unknown, so a stale capture param cannot draw a route to nowhere.
+  if (query.dest) setDestination(query.dest);
 
   const api = { renderer, composer, stage, camera, controls, model, state, overlays, flows };
   if (typeof window !== 'undefined') window.diorama = api;
@@ -64435,6 +65622,7 @@ function world_mount(options = {}) {
     stop();
     if (typeof composer.dispose === 'function') composer.dispose();
     renderer.dispose();
+    if (radarGL) radarGL.renderer.dispose();
     world_textureCache.dispose();
   };
   api.stop = stop;
@@ -64454,9 +65642,13 @@ function world_mount(options = {}) {
     stepFlows(at);
     if (state.mode === 'fp') stepFirstPerson(0);
     stepLabels();
+    drawRadar();
+    updateDestChip();
+    updateNearInfo();
     renderer.info.reset();
     composer.render();
     api.drawCalls = renderer.info.render.calls;
+    api.radarDrawCalls = radarDrawCalls;
     api.triangles = renderer.info.render.triangles;
     api.textures = world_textureCache.size;
   };
@@ -64466,7 +65658,7 @@ function world_mount(options = {}) {
     renderStatic(query.frozen);
     document.documentElement.setAttribute('data-world-ready', 'static');
     if (hud && hud.badge) {
-      hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${model.stats.env} · ${api.drawCalls} draw calls · ${world_textureCache.size} textures · net ${model.stats.network} ${model.stats.segments}seg`;
+      hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${model.stats.env} · ${api.drawCalls} draw calls · radar ${api.radarDrawCalls} · ${world_textureCache.size} textures · net ${model.stats.network} ${model.stats.segments}seg`;
     }
 
     // A single render during module evaluation is not enough: the compositor
@@ -64479,6 +65671,9 @@ function world_mount(options = {}) {
     let repaints = WORLD_FREEZE_REPAINTS;
     const repaint = () => {
       if (!running) return;
+      // Redraw the radar too: it is a second canvas, and it needs the same
+      // post-layout nudge as the main one to reach the compositor.
+      drawRadar();
       composer.render();
       repaints -= 1;
       if (repaints > 0) frameHandle = requestAnimationFrame(repaint);
@@ -64495,7 +65690,7 @@ function world_mount(options = {}) {
     renderStatic(0);
     document.documentElement.setAttribute('data-world-ready', 'static');
     if (hud && hud.badge) {
-      hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${api.drawCalls} draw calls · ${world_textureCache.size} textures`;
+      hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${api.drawCalls} draw calls · radar ${api.radarDrawCalls} · ${world_textureCache.size} textures`;
     }
     controls.addEventListener('change', () => renderStatic(0));
     return api;
@@ -64514,9 +65709,13 @@ function world_mount(options = {}) {
     else controls.update();
     stepFlows(now / 1000);
     stepLabels();
+    drawRadar();
+    updateDestChip();
+    updateNearInfo();
     renderer.info.reset();
     composer.render();
     api.drawCalls = renderer.info.render.calls;
+    api.radarDrawCalls = radarDrawCalls;
     if (!live) {
       // Only claim the live state once a frame has actually reached the screen.
       live = true;
