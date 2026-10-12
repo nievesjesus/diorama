@@ -60035,6 +60035,184 @@ function planEnvironment(requested, footprint, parts, tuning = WORLD_ENV_TUNING,
   return { mode, requested, metrics, ground, city, warehouse, roadRects, network, tuning };
 }
 
+// ----------------------------------------------------------- terrain apron
+//
+// An optional ground/terrain apron, so the diorama can read as land instead of
+// a floating slab. This is a pure planner: it reports the land's extent, its
+// level and the parameters of its noise, and the runtime builds one mesh from
+// them. Two variants: 1 sits the plinth on the land (the apron is at the slab
+// base and the strata sides become its base), 2 buries it flush to the deck
+// (the apron is level with the slab top, so the edge has no lip or side band).
+// Variant 0 is the unchanged void.
+//
+// The land is a pure function of the slab: FNV-1a tokens and integer-hash value
+// noise only, no Math.random, so a `?t=` capture of the land is byte-identical.
+const WORLD_TERRAIN_TUNING = {
+  grid: 96,             // mesh segments per axis
+  outerMin: 400,        // the apron is never smaller than this across
+  outerFactor: 6,       // ... nor smaller than this many slab spans
+  margin: 2.4,          // world units of dead-flat land around the slab lip
+  fade: 12,             // units over which the noise ramps back in
+  amplitude: 1.7,       // peak displacement, world units
+  baseFrequency: 0.011, // noise cells per world unit (wavelength ~90u)
+  octaves: 2,
+  seed: 0x9e3779b9,     // fixed: the land depends only on the slab
+  // The road run-out: a faded asphalt strip continuing each edge road out into
+  // the land, so the apron does not read as walled off at the gates.
+  roadLength: 32,       // run-out past the gate, world units
+  roadSegments: 8,      // ribbon segments along the run-out (follows the land)
+  roadFade: 0.55,       // fraction of the run-out the strip stays solid
+};
+
+// Which variant an absent/blank/unknown `?ground=` resolves to. The land is the
+// default look now; `?ground=0` still asks for the historic void.
+const WORLD_GROUND_DEFAULT = 2;
+
+/**
+ * Resolve a `?ground` query value to a variant. Absent, blank or anything that
+ * is not exactly 0, 1 or 2 falls back to the default land; 0 stays the void.
+ */
+function resolveGround(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return WORLD_GROUND_DEFAULT;
+  const value = Number(raw);
+  return value === 0 || value === 1 || value === 2 ? value : WORLD_GROUND_DEFAULT;
+}
+
+const WORLD_TERRAIN_VARIANTS = [1, 2];
+
+function planTerrain(slab, options = {}) {
+  const variant = Number(options.variant);
+  if (!WORLD_TERRAIN_VARIANTS.includes(variant)) return null;
+  if (!slab || !slab.footprint) throw new Error('planTerrain requires a built slab');
+  const tuning = { ...WORLD_TERRAIN_TUNING, ...(options.tuning || {}) };
+  const footprint = slab.footprint;
+  const spanX = footprint.maxX - footprint.minX;
+  const spanZ = footprint.maxZ - footprint.minZ;
+  const span = Math.max(spanX, spanZ, 1e-3);
+  const outer = world_round(Math.max(tuning.outerMin, span * tuning.outerFactor));
+  const half = world_round(outer / 2);
+  // Variant 2 puts the land flush with the deck (the slab top is y = 0), so the
+  // transition is a clean material line with no lip and no side band to read as
+  // a void stripe. Variant 1 keeps the plinth standing on the land.
+  const base = variant === 2 ? 0 : -Math.abs(slab.thickness);
+  const cx = world_round((footprint.minX + footprint.maxX) / 2);
+  const cz = world_round((footprint.minZ + footprint.maxZ) / 2);
+  return {
+    variant,
+    base,
+    outer,
+    half,
+    center: [cx, cz],
+    grid: tuning.grid,
+    footprint: {
+      minX: footprint.minX,
+      maxX: footprint.maxX,
+      minZ: footprint.minZ,
+      maxZ: footprint.maxZ,
+    },
+    margin: tuning.margin,
+    fade: tuning.fade,
+    amplitude: tuning.amplitude,
+    baseFrequency: tuning.baseFrequency,
+    octaves: tuning.octaves,
+    seed: tuning.seed,
+    bounds: {
+      minX: world_round(cx - half),
+      maxX: world_round(cx + half),
+      minZ: world_round(cz - half),
+      maxZ: world_round(cz + half),
+    },
+  };
+}
+
+function world_terrainHash(ix, iz, seed) {
+  let hash = (seed ^ Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1)) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2545f491) >>> 0;
+  hash = (hash ^ (hash >>> 13)) >>> 0;
+  return hash / 4294967296;
+}
+
+// Smoothed value noise in [-1, 1] over a couple of octaves. Low frequency and
+// bounded, so the land reads as gentle relief rather than a crumpled sheet.
+function world_terrainValue(plan, x, z) {
+  let frequency = plan.baseFrequency;
+  let amplitude = 1;
+  let sum = 0;
+  let norm = 0;
+  for (let octave = 0; octave < plan.octaves; octave += 1) {
+    const seed = plan.seed + octave * 1013;
+    const gx = x * frequency;
+    const gz = z * frequency;
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const fx = gx - ix;
+    const fz = gz - iz;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sz = fz * fz * (3 - 2 * fz);
+    const n00 = world_terrainHash(ix, iz, seed);
+    const n10 = world_terrainHash(ix + 1, iz, seed);
+    const n01 = world_terrainHash(ix, iz + 1, seed);
+    const n11 = world_terrainHash(ix + 1, iz + 1, seed);
+    const nx0 = n00 + (n10 - n00) * sx;
+    const nx1 = n01 + (n11 - n01) * sx;
+    sum += ((nx0 + (nx1 - nx0) * sz) * 2 - 1) * amplitude;
+    norm += amplitude;
+    amplitude *= 0.5;
+    frequency *= 2;
+  }
+  return norm > 0 ? (sum * (1 / norm)) : 0;
+}
+
+/**
+ * Height of the land at a world (x, z). Dead flat at `base` inside the slab
+ * footprint and for `margin` around it, then the noise ramps in over `fade`,
+ * so the lip meets the ground with no seam whatever the slab footprint is.
+ */
+function terrainHeight(plan, x, z) {
+  if (!plan || plan.variant === 0) return 0;
+  const fp = plan.footprint;
+  const dx = x < fp.minX ? fp.minX - x : x > fp.maxX ? x - fp.maxX : 0;
+  const dz = z < fp.minZ ? fp.minZ - z : z > fp.maxZ ? z - fp.maxZ : 0;
+  const distance = Math.hypot(dx, dz);
+  if (distance <= plan.margin) return plan.base;
+  if (distance >= plan.margin + plan.fade) {
+    return world_round(plan.base + world_terrainValue(plan, x, z) * plan.amplitude);
+  }
+  const t = (distance - plan.margin) / plan.fade;
+  const ramp = t * t * (3 - 2 * t);
+  return world_round(plan.base + world_terrainValue(plan, x, z) * plan.amplitude * ramp);
+}
+
+/**
+ * One faded asphalt run-out per edge gate, continuing the perimeter road into
+ * the land so the apron does not read as walled off. Pure: the strip is the
+ * gate the city plan already placed, extended outward along its own direction
+ * for a length fixed by its index. The runtime turns the whole list into one
+ * ribbon mesh that follows the land, so the cost is a single draw call.
+ */
+function planTerrainRoads(terrain, city, tuning = WORLD_TERRAIN_TUNING) {
+  if (!terrain || terrain.variant === 0) return [];
+  const gates = city && Array.isArray(city.gates) ? city.gates : [];
+  const strips = [];
+  for (let index = 0; index < gates.length; index += 1) {
+    const gate = gates[index];
+    const dir = gate.dir;
+    if (!dir || (dir[0] === 0 && dir[1] === 0)) continue;
+    // A deterministic wobble in the run-out keeps every gate from ending on the
+    // same line, without leaving the 25-40u band the look was approved at.
+    const length = tuning.roadLength + ((index % 3) - 1) * 4;
+    strips.push({
+      x: gate.x,
+      z: gate.z,
+      dir: [dir[0], dir[1]],
+      width: gate.width,
+      along: gate.along,
+      length,
+    });
+  }
+  return strips;
+}
+
 // ---------------------------------------------------------- building detail
 //
 // The environment plan dresses the ground; the parts are the machines standing
@@ -61145,6 +61323,10 @@ function buildWorld(scene, options = {}) {
     sourceId: slabPart ? slabPart.id : null,
   };
 
+  // The optional land around the plinth. Variant 0 (or absent) is the void the
+  // diorama has always floated in, so the default model is byte-identical.
+  const terrain = planTerrain(slab, { variant: options.ground });
+
   // A physical sign per labelled part, at a deterministic footprint corner that
   // clears its neighbours and stands on the slab. Planned from the normalised
   // parts and the slab footprint, so it stays pure and needs no scene access.
@@ -61176,6 +61358,10 @@ function buildWorld(scene, options = {}) {
     { ...WORLD_ENV_TUNING, ...(options.envTuning || {}) },
     `${typeof scene.title === 'string' ? scene.title : ''}|${parts.length}`,
   );
+
+  // The land's road runs: one strip per edge gate, continuing the perimeter
+  // asphalt out over the apron. Pure, and empty in the void or without streets.
+  const terrainRoads = planTerrainRoads(terrain, env.city);
 
   // A pole may not stand inside a part, and labels float above parts, so the
   // same footprints (grown a little) keep masts clear of both.
@@ -61398,6 +61584,8 @@ function buildWorld(scene, options = {}) {
     origin: world_point([cx, deck, cz]),
     cableHeight,
     slab,
+    terrain,
+    terrainRoads,
     env,
     buildings,
     parts,
@@ -61436,6 +61624,8 @@ function buildWorld(scene, options = {}) {
       termini: env.network.counts,
       orphans: env.network.orphans.length,
       network: env.network.ok ? 'ok' : 'orphaned',
+      terrain: terrain ? terrain.variant : 0,
+      terrainRoads: terrainRoads.length,
     },
     tuning,
   };
@@ -61570,6 +61760,14 @@ function world_query() {
   const map = rawMap === '1' || rawMap === 'true' ? 'on'
     : rawMap === '0' || rawMap === 'false' ? 'off'
       : null;
+  // The land around the plinth. The default look is land, at deck level
+  // (variant 2); ?ground=1 sits the plinth on the ground, ?ground=0 keeps the
+  // historic void. Absent or unknown resolves to the default in the pure layer.
+  const ground = resolveGround(params.get('ground'));
+  // A first-person capture may set the look with ?yaw=<degrees>, so a shot can
+  // be aimed outward from the slab edge. Frozen-capture aid only.
+  const rawYaw = params.get('yaw');
+  const yaw = rawYaw === null || rawYaw === '' ? null : Number(rawYaw);
   return {
     map,
     env: env === 'warehouse' || env === 'city' || env === 'auto' ? env : null,
@@ -61582,6 +61780,8 @@ function world_query() {
     fill: fill !== null && Number.isFinite(fill) ? world_clamp(fill, 0.1, 4) : null,
     fx: fx !== null && Number.isFinite(fx) ? fx : null,
     fz: fz !== null && Number.isFinite(fz) ? fz : null,
+    ground,
+    yaw: yaw !== null && Number.isFinite(yaw) ? yaw : null,
     // The parts/links/draw-calls readout is a development aid, so it is off
     // unless ?debug=1 asks for it.
     debug: debug === '1' || debug === 'true',
@@ -63015,23 +63215,277 @@ function world_buildSlab(root, model, material) {
   slab.name = 'slab';
   root.add(slab);
 
-  // Fake void: a big soft radial shadow hanging under the slab.
-  const under = new Mesh(
-    new PlaneGeometry(w * 2.1, d * 2.1),
-    new MeshBasicMaterial({
-      map: world_radialTexture(dark ? 0.5 : 0.32, 0, 1.5),
-      color: new Color(dark ? '#01040a' : '#4a3f2c'),
-      transparent: true,
-      depthWrite: false,
-      opacity: dark ? 0.7 : 0.4,
-    }),
-  );
-  under.rotation.x = -Math.PI / 2;
-  under.position.y = -model.slab.thickness - 2.6;
-  root.add(under);
+  // Fake void: a big soft radial shadow hanging under the slab. On land it
+  // would sit below the terrain and never show, so ground mode skips it (and
+  // saves the draw call) rather than leave a plane the land has to hide.
+  if (!model.terrain) {
+    const under = new Mesh(
+      new PlaneGeometry(w * 2.1, d * 2.1),
+      new MeshBasicMaterial({
+        map: world_radialTexture(dark ? 0.5 : 0.32, 0, 1.5),
+        color: new Color(dark ? '#01040a' : '#4a3f2c'),
+        transparent: true,
+        depthWrite: false,
+        opacity: dark ? 0.7 : 0.4,
+      }),
+    );
+    under.rotation.x = -Math.PI / 2;
+    under.position.y = -model.slab.thickness - 2.6;
+    root.add(under);
+  }
 
   return slab;
 }
+
+// The land apron. One mesh, one draw call: a displaced plane that carries the
+// earth tile and fades into the existing fog, damped flat around the slab so
+// the lip meets it cleanly. ~96x96 segments over a 400+ unit field.
+//
+// The earth tile is deliberately low frequency and carries the land's tone. At
+// close range that leaves it soft, so a second, high-frequency detail tile is
+// multiplied over it at a small UV scale — the grit that makes grazing and
+// close-up views read as ground instead of a blurred blob.
+const WORLD_TERRAIN_TILE = 22;
+const WORLD_TERRAIN_DETAIL_TILE = 3.2;
+const WORLD_TERRAIN_DETAIL_STRENGTH = 0.5;
+
+function world_paintEarth(ctx, width, height, rand, dark) {
+  const base = dark ? '#20221c' : '#8a7f63';
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, width, height);
+  // Every element is stamped at its wrapped offsets too, so the tile meets
+  // itself with no seam: at grazing angles a tile edge runs straight down the
+  // view and a mismatched border reads as a hard line.
+  const wraps = [-width, 0, width];
+  const wrapY = [-height, 0, height];
+  // Broad tonal patches: the same relief the mesh has, read in the albedo. A
+  // radial gradient is fixed in canvas space, so each wrapped copy is built at
+  // its own centre rather than relying on the fill rect to move it.
+  for (let index = 0; index < 90; index += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
+    const radius = 12 + rand() * 46;
+    const lift = rand() < 0.5;
+    const alpha = (dark ? 0.05 : 0.07) + rand() * 0.05;
+    const tone = lift
+      ? (dark ? `rgba(120,140,96,${alpha})` : `rgba(180,176,132,${alpha})`)
+      : (dark ? `rgba(0,0,0,${alpha})` : `rgba(58,52,34,${alpha})`);
+    for (const ox of wraps) for (const oy of wrapY) {
+      const cx = x + ox;
+      const cy = y + oy;
+      const blob = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      blob.addColorStop(0, tone);
+      blob.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = blob;
+      ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+    }
+  }
+  // Speckle: stones and clumps, the grain the eye needs to read earth.
+  for (let index = 0; index < 5200; index += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
+    const r = 0.4 + rand() * 1.5;
+    const lift = rand() < 0.5;
+    const alpha = 0.05 + rand() * 0.09;
+    ctx.fillStyle = lift
+      ? (dark ? `rgba(150,164,120,${alpha})` : `rgba(210,202,162,${alpha})`)
+      : (dark ? `rgba(0,0,0,${alpha})` : `rgba(48,42,28,${alpha})`);
+    for (const ox of wraps) for (const oy of wrapY) {
+      ctx.beginPath();
+      ctx.arc(x + ox, y + oy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// The detail tile is a neutral mid grey stamped with fine grit, so the shader
+// can multiply it (x2) over the earth without shifting the land's brightness.
+// Cached and painted from world_rng, so it is deterministic like every tile.
+function world_paintEarthDetail(ctx, width, height, rand, dark) {
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, width, height);
+  const wraps = [-width, 0, width];
+  const wrapY = [-height, 0, height];
+  const grains = dark ? 9000 : 7600;
+  for (let index = 0; index < grains; index += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
+    const r = 0.4 + rand() * 1.1;
+    const lift = rand() < 0.5;
+    const alpha = 0.06 + rand() * 0.14;
+    ctx.fillStyle = lift ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`;
+    for (const ox of wraps) for (const oy of wrapY) ctx.fillRect(x + ox, y + oy, r, r);
+  }
+  // A few small clods, darker, to break the grain into clumps rather than a
+  // uniform dot field.
+  for (let index = 0; index < 340; index += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
+    const r = 1.4 + rand() * 3.4;
+    const lift = rand() < 0.45;
+    const alpha = 0.05 + rand() * 0.08;
+    ctx.fillStyle = lift ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`;
+    for (const ox of wraps) for (const oy of wrapY) {
+      ctx.beginPath();
+      ctx.arc(x + ox, y + oy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// A MeshStandardMaterial wearing the earth tile, with the detail tile folded in
+// by hand: three has no built-in detail map, so the fragment shader is patched
+// after the albedo sample. The strip the deck meets is flush, so the terrain is
+// nudged back a touch in depth to keep it from z-fighting the slab top.
+function world_terrainMaterial(earth, detail, detailScale) {
+  const material = new MeshStandardMaterial({
+    map: earth,
+    roughness: 0.98,
+    metalness: 0,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uDetailMap = { value: detail };
+    shader.uniforms.uDetailScale = { value: detailScale };
+    shader.uniforms.uDetailStrength = { value: WORLD_TERRAIN_DETAIL_STRENGTH };
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        [
+          '#include <common>',
+          'uniform sampler2D uDetailMap;',
+          'uniform float uDetailScale;',
+          'uniform float uDetailStrength;',
+        ].join('\n'),
+      )
+      .replace(
+        '#include <map_fragment>',
+        [
+          '#include <map_fragment>',
+          'vec3 microDetail = texture2D( uDetailMap, vMapUv * uDetailScale ).rgb;',
+          'diffuseColor.rgb *= mix( vec3( 1.0 ), microDetail * 2.0, uDetailStrength );',
+        ].join('\n'),
+      );
+  };
+  material.customProgramCacheKey = () => 'terrain-detail';
+  return material;
+}
+
+function world_buildTerrain(root, model) {
+  const plan = model.terrain;
+  if (!plan) return null;
+  const dark = model.theme === 'dark';
+  const tileRepeat = Math.max(1, Math.round(plan.outer / WORLD_TERRAIN_TILE));
+  const texture = world_finishTexture(
+    world_textureCache,
+    `terrain:earth:${model.theme}`,
+    (ctx, w, h, rand) => world_paintEarth(ctx, w, h, rand, dark),
+    { repeat: tileRepeat, srgb: true },
+  );
+  const detailRepeat = Math.max(1, Math.round(plan.outer / WORLD_TERRAIN_DETAIL_TILE));
+  const detail = world_finishTexture(
+    world_textureCache,
+    `terrain:detail:${model.theme}`,
+    (ctx, w, h, rand) => world_paintEarthDetail(ctx, w, h, rand, dark),
+    { repeat: 1, srgb: true },
+  );
+  const geometry = new PlaneGeometry(plan.outer, plan.outer, plan.grid, plan.grid);
+  geometry.rotateX(-Math.PI / 2);
+  const position = geometry.attributes.position;
+  for (let index = 0; index < position.count; index += 1) {
+    const x = plan.center[0] + position.getX(index);
+    const z = plan.center[1] + position.getZ(index);
+    position.setY(index, terrainHeight(plan, x, z));
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  const mesh = new Mesh(geometry, world_terrainMaterial(texture, detail, detailRepeat / tileRepeat));
+  mesh.position.set(plan.center[0], 0, plan.center[1]);
+  mesh.receiveShadow = true;
+  // Layer 1, like the label furniture: the hero camera enables every layer and
+  // is unaffected, but the radar (layer 0 only) still frames the slab alone, so
+  // the land does not change the map.
+  mesh.layers.set(1);
+  mesh.name = 'terrain-apron';
+  root.add(mesh);
+  return mesh;
+}
+
+// One ribbon mesh carrying every edge road's run-out: the perimeter asphalt
+// continued out over the land and faded to nothing, so the apron does not read
+// as walled off at the gates. One draw call for all of them, and the ribbon
+// rides the land's height so it never floats or buries.
+const WORLD_TERRAIN_ROAD_LIFT = 0.03;
+
+function world_buildTerrainRoads(root, model) {
+  const plan = model.terrain;
+  const roads = model.terrainRoads;
+  if (!plan || !Array.isArray(roads) || roads.length === 0) return null;
+  const dark = model.theme === 'dark';
+  const segments = Math.max(1, WORLD_TERRAIN_TUNING.roadSegments);
+  const fade = WORLD_TERRAIN_TUNING.roadFade;
+  const fp = plan.footprint;
+  const onSlab = (x, z) => x >= fp.minX && x <= fp.maxX && z >= fp.minZ && z <= fp.maxZ;
+  // The asphalt ink is authored as sRGB, but a vertex colour is consumed as
+  // linear, so these are the linear forms of the overlay's own asphalt tones;
+  // anything brighter reads as pale concrete, not road.
+  const ink = dark ? [0.012, 0.013, 0.016] : [0.065, 0.067, 0.076];
+  const positions = [];
+  const normals = [];
+  const colors = [];
+  const indices = [];
+  for (const road of roads) {
+    const [dx, dz] = road.dir;
+    const half = road.width / 2;
+    const nx = -dz;
+    const nz = dx;
+    const start = positions.length / 3;
+    for (let step = 0; step <= segments; step += 1) {
+      const t = step / segments;
+      const cx = road.x + dx * road.length * t;
+      const cz = road.z + dz * road.length * t;
+      const y = (onSlab(cx, cz) ? 0 : terrainHeight(plan, cx, cz)) + WORLD_TERRAIN_ROAD_LIFT;
+      // Solid over the first `fade` of the run, then a smooth fall to nothing.
+      const ramp = world_clamp((1 - t) / Math.max(1e-3, 1 - fade), 0, 1);
+      const alpha = 0.9 * ramp;
+      for (const side of [-1, 1]) {
+        positions.push(cx + nx * half * side, y, cz + nz * half * side);
+        normals.push(0, 1, 0);
+        colors.push(ink[0], ink[1], ink[2], alpha);
+      }
+    }
+    for (let step = 0; step < segments; step += 1) {
+      const a = start + step * 2;
+      const b = a + 1;
+      const c = a + 2;
+      const d = a + 3;
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 4));
+  geometry.setIndex(indices);
+  const material = new MeshStandardMaterial({
+    vertexColors: true,
+    side: DoubleSide,
+    transparent: true,
+    depthWrite: false,
+    roughness: 0.94,
+    metalness: 0.02,
+  });
+  const mesh = new Mesh(geometry, material);
+  mesh.name = 'terrain-roads';
+  // Layer 1 with the land: the radar still frames the slab and its own roads.
+  mesh.layers.set(1);
+  mesh.renderOrder = 1;
+  root.add(mesh);
+  return mesh;
+}
+
 
 // Overhead cable trays for short spans, utility poles for long ones. The
 // catenary curve is shared with the pulses so a travelling light stays glued
@@ -64785,7 +65239,7 @@ function world_mount(options = {}) {
   if (!host || !dataNode) return null;
   const scene = JSON.parse(dataNode.textContent);
   const query = world_query();
-  const model = buildWorld(scene, query.env ? { env: query.env } : {});
+  const model = buildWorld(scene, { ...(query.env ? { env: query.env } : {}), ground: query.ground });
   const dark = model.theme === 'dark';
   const frozen = query.frozen !== null;
 
@@ -64858,6 +65312,11 @@ function world_mount(options = {}) {
     lights.key.shadow.radius = 5.2;
   }
   world_buildSlab(root, model, material);
+  // The land, under everything: the slab publishes the plan, the runtime
+  // displaces one plane from it and lets the fog swallow its far edge. Then the
+  // road run-outs, so the perimeter asphalt continues onto the land.
+  world_buildTerrain(root, model);
+  world_buildTerrainRoads(root, model);
   // The place, before the machines: its paint lies on the deck and its
   // furniture has already been planned around the parts.
   world_buildGround(root, model);
@@ -65581,6 +66040,9 @@ function world_mount(options = {}) {
     if (fx !== null && fz !== null) {
       state.fp.set(fx, fpGroundEye(fx, fz), fz);
     }
+    // A capture aid: aim the look at yaw degrees (0 looks down -z), so a shot
+    // can be pointed outward from the slab edge toward the land.
+    if (query.yaw !== null) state.yaw = (query.yaw * Math.PI) / 180;
     camera.position.copy(state.fp);
     stepFirstPerson(0);
     setWalkHint(true);
