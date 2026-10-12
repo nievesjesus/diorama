@@ -25,7 +25,11 @@ Almost every architecture diagram is a box with a label, and it drifts from the 
 
 [![k8s (light) — three replicas delivered by CI](.github/assets/gallery-k8s.png)](examples/k8s-ci/world.html)
 
-Each example ships two self-contained pages: `index.html`, the SVG figure, where hovering a part traces its links, and `world.html`, the same scene as a three.js WebGL world you can drag to orbit, scroll to zoom, double-click to focus a part, and walk in first person with `V`. Both freeze a frame with `?t=<seconds>`; the world adds `?cam=orbit|top|fp`, `?env=warehouse|city`, `?focus=<id>` and `?debug=1`, and the SVG page takes `?frame=1` for a framed embed. Everything is inlined — three.js r169 is vendored into `world.html` — so each page is standalone and offline.
+[![rea (dark) - reverse engineering providers: Ghidra, Hopper, IDA, Browser/CDP](.github/assets/gallery-rea.png)](examples/rea/world.html)
+
+[![universal-modder (light) - the mod-any-game pipeline](.github/assets/gallery-universal-modder.png)](examples/universal-modder/world.html)
+
+Each example ships two self-contained pages: `index.html`, the SVG figure, where hovering a part traces its links, and `world.html`, the same scene as a three.js WebGL world you can drag to orbit, scroll to zoom, double-click to focus a part, and press `V` to walk in first person with `WASD` (`Shift` runs). Both freeze a frame with `?t=<seconds>`; the world adds `?cam=orbit|top|fp`, `?env=warehouse|city`, `?focus=<id>` and `?debug=1`, and the SVG page takes `?frame=1` for a framed embed. Everything is inlined — three.js r169 is vendored into `world.html` — so each page is standalone and offline.
 
 ## Install
 
