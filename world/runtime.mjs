@@ -11,13 +11,17 @@
 
 import {
   WORLD_TEXEL,
+  WALK_EYE,
   avenueRect,
   buildWorld,
   cylinderUvScale,
   hashToken,
+  planWalk,
   remapBoxUv,
   textureDescriptor,
   tokenHex,
+  walkGroundY,
+  walkStep,
 } from './scene3d.mjs';
 
 // The hero pose mirrors the SVG isometric framing: 45 degrees round, ~34
@@ -26,10 +30,12 @@ import {
 const WORLD_HOME = { azimuth: -Math.PI * 0.25, polar: Math.PI * 0.3111, fill: 0.8 };
 const WORLD_HERO_FOV = 20;
 const WORLD_FP_FOV = 62;
+// The fp camera opens at this height so a frozen `?cam=fp` capture keeps the
+// exact pose it has always had. Once the walker moves, the pure solver settles
+// the eye to the surface height (WALK_EYE above the floor underfoot).
 const WORLD_FP_HEIGHT = 1.3;
-const WORLD_FP_SPEED = 6.2;
-const WORLD_FP_SPRINT = 2.1;
-const WORLD_FP_RADIUS = 0.45;
+const WORLD_HINT_ORBIT = 'drag to orbit · scroll to zoom · double-click a part to focus · V first person';
+const WORLD_HINT_WALK = 'WASD walk · shift run · mouse look · V exit';
 const WORLD_FOCUS_FILL = 0.6;
 const WORLD_FLY_MS = 720;
 const WORLD_PULSE_REACH = 2.4;
@@ -116,12 +122,20 @@ function world_query() {
   // Which environment to generate, overriding whatever the scene asked for.
   // Only for demos and captures: a scene normally decides this itself.
   const env = params.get('env');
+  // A first-person capture may stand anywhere on the slab with ?fx=&fz= (world
+  // units, same frame as the model). Only the frozen capture path reads it.
+  const rawFx = params.get('fx');
+  const rawFz = params.get('fz');
+  const fx = rawFx === null || rawFx === '' ? null : Number(rawFx);
+  const fz = rawFz === null || rawFz === '' ? null : Number(rawFz);
   return {
     env: env === 'warehouse' || env === 'city' || env === 'auto' ? env : null,
     frozen: frozen !== null && Number.isFinite(frozen) ? frozen : null,
     cam: params.get('cam') || null,
     focus: params.get('focus') || null,
     fill: fill !== null && Number.isFinite(fill) ? world_clamp(fill, 0.1, 4) : null,
+    fx: fx !== null && Number.isFinite(fx) ? fx : null,
+    fz: fz !== null && Number.isFinite(fz) ? fz : null,
     // The parts/links/draw-calls readout is a development aid, so it is off
     // unless ?debug=1 asks for it.
     debug: debug === '1' || debug === 'true',
@@ -285,6 +299,21 @@ function world_paintPanelGrid(ctx, width, height, step) {
   }
 }
 
+// Vertical panel tint: each panel column takes a few levels off the integer
+// hash of its own index, so a wall reads as many bolted sheets rather than one
+// flat colour. Four or five levels of 241 is about 2%, which breaks the flatness
+// without reading as stripes; the seams drawn on top then land on a panel that
+// is already very slightly its own tone.
+function world_paintPanelTint(ctx, width, height, step) {
+  if (!step || step < 8) return;
+  const cols = Math.ceil(width / step);
+  for (let col = 0; col < cols; col += 1) {
+    const delta = (hashToken(`panel:${col}`) % 13) - 6; // -6 .. 6
+    ctx.fillStyle = world_grainRGBA(delta, 0.4);
+    ctx.fillRect(col * step, 0, step, height);
+  }
+}
+
 // Canvas row 0 is the top of the texture (CanvasTexture flips Y), so the wear
 // band belongs at row 0 and the grime at the last row.
 function world_paintWearBand(ctx, width, height, amount) {
@@ -335,6 +364,7 @@ function world_paintFamily(ctx, width, height, rand, descriptor) {
   if (descriptor.grain === 'speckle') world_paintSpeckleGrain(ctx, width, height, rand, 10);
   else if (descriptor.grain === 'crosshatch') world_paintCrossGrain(ctx, width, height, rand, reach);
   else world_paintBrushGrain(ctx, width, height, rand, reach);
+  world_paintPanelTint(ctx, width, height, descriptor.panelStep);
   world_paintPanelGrid(ctx, width, height, descriptor.panelStep);
   world_paintWearBand(ctx, width, height, descriptor.wear);
   world_paintGrime(ctx, width, height, descriptor.grime, descriptor.streaks, rand);
@@ -638,6 +668,136 @@ function world_paintHazard(ctx, width, height) {
     ctx.moveTo(index, 0);
     ctx.lineTo(index + height, height);
     ctx.stroke();
+  }
+}
+
+// --------------------------------------------------------- building surfaces
+//
+// Four tiles dress the structures scene3d plans: the windows, the door, the
+// HVAC louvre and the grime streak. Unlike the family skins these are painted
+// in real colours, not near-white greys, because the window is glass and the
+// door is a painted roller: the material leaves color at white and the tile
+// carries the whole look. All four are shared across every building in the
+// scene through the one cache, so a district costs four uploads, not four per
+// structure.
+
+// A recessed window: a steel frame, dark glass with a soft sweep of sky, a
+// shadow gathering under the head and a lit sill along the bottom, then a
+// single mullion. The inset is painted, not modelled, so a wall carries many
+// windows for one flat quad each.
+function world_paintWindow(ctx, width, height) {
+  ctx.fillStyle = 'rgb(96,102,110)';
+  ctx.fillRect(0, 0, width, height);
+  const frame = Math.round(width * 0.09);
+  const innerW = width - 2 * frame;
+  const innerH = height - 2 * frame;
+  const glass = ctx.createLinearGradient(0, frame, 0, frame + innerH);
+  glass.addColorStop(0, 'rgb(30,38,48)');
+  glass.addColorStop(0.55, 'rgb(20,27,36)');
+  glass.addColorStop(1, 'rgb(13,18,25)');
+  ctx.fillStyle = glass;
+  ctx.fillRect(frame, frame, innerW, innerH);
+  // A pale diagonal sweep, the one thing that reads as glass instead of a hole.
+  ctx.fillStyle = 'rgba(150,178,204,0.12)';
+  ctx.beginPath();
+  ctx.moveTo(frame, frame + innerH);
+  ctx.lineTo(frame + innerW * 0.36, frame);
+  ctx.lineTo(frame + innerW * 0.56, frame);
+  ctx.lineTo(frame, frame + innerH);
+  ctx.closePath();
+  ctx.fill();
+  const head = ctx.createLinearGradient(0, frame, 0, frame + innerH * 0.22);
+  head.addColorStop(0, 'rgba(0,0,0,0.55)');
+  head.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = head;
+  ctx.fillRect(frame, frame, innerW, innerH * 0.22);
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  ctx.fillRect(frame, height - frame - 2, innerW, 2);
+  // Sill lip under the frame, so the pane sits in a reveal.
+  ctx.fillStyle = 'rgb(126,132,140)';
+  ctx.fillRect(0, height - Math.round(frame * 0.7), width, Math.round(frame * 0.7));
+  ctx.fillStyle = 'rgb(96,102,110)';
+  ctx.fillRect(width / 2 - 1.5, frame, 3, innerH);
+}
+
+// A roller shutter: a recessed reveal of horizontal slats under a steel frame,
+// a small barred window near the head and a handle. Abstract, like every other
+// decal here: no wordmark, because at hero distance glyphs are mush.
+function world_paintDoor(ctx, width, height) {
+  ctx.fillStyle = 'rgb(74,80,88)';
+  ctx.fillRect(0, 0, width, height);
+  const frame = Math.round(width * 0.08);
+  const innerW = width - 2 * frame;
+  ctx.fillStyle = 'rgb(46,51,58)';
+  ctx.fillRect(frame, frame, innerW, height - frame);
+  const slats = 8;
+  const pitch = (height - frame) / slats;
+  for (let index = 0; index < slats; index += 1) {
+    const y = frame + index * pitch;
+    ctx.fillStyle = index % 2 === 0 ? 'rgb(96,103,112)' : 'rgb(84,90,99)';
+    ctx.fillRect(frame, y, innerW, pitch * 0.84);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(frame, y + pitch * 0.84, innerW, pitch * 0.16);
+  }
+  const winX = frame + innerW * 0.22;
+  const winY = frame * 1.4;
+  ctx.fillStyle = 'rgb(28,36,46)';
+  ctx.fillRect(winX, winY, innerW * 0.56, height * 0.12);
+  ctx.strokeStyle = 'rgb(122,129,139)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(winX, winY, innerW * 0.56, height * 0.12);
+  ctx.fillStyle = 'rgb(182,188,196)';
+  ctx.fillRect(frame + innerW * 0.74, height * 0.56, innerW * 0.08, height * 0.05);
+}
+
+// An HVAC housing: a framed louvre bank on galvanised steel, with a shadowed
+// gap between every slat. Used on all faces of the unit, which is what a
+// louvred box looks like from any angle anyway.
+function world_paintHvac(ctx, width, height) {
+  ctx.fillStyle = 'rgb(150,156,163)';
+  ctx.fillRect(0, 0, width, height);
+  const margin = Math.round(width * 0.07);
+  ctx.fillStyle = 'rgb(108,114,122)';
+  ctx.fillRect(margin, margin, width - 2 * margin, height - 2 * margin);
+  const slats = 9;
+  const pitch = (height - 2 * margin) / slats;
+  for (let index = 0; index < slats; index += 1) {
+    const y = margin + index * pitch;
+    ctx.fillStyle = 'rgb(140,147,155)';
+    ctx.fillRect(margin, y, width - 2 * margin, pitch * 0.5);
+    ctx.fillStyle = 'rgb(56,61,68)';
+    ctx.fillRect(margin, y + pitch * 0.5, width - 2 * margin, pitch * 0.3);
+    ctx.fillStyle = 'rgb(198,205,214)';
+    ctx.fillRect(margin, y + pitch * 0.82, width - 2 * margin, Math.max(1, pitch * 0.12));
+  }
+  ctx.fillStyle = 'rgb(70,75,82)';
+  for (const [rx, ry] of [
+    [margin * 0.55, margin * 0.55],
+    [width - margin * 0.55, margin * 0.55],
+    [margin * 0.55, height - margin * 0.55],
+    [width - margin * 0.55, height - margin * 0.55],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(rx, ry, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// A weathering streak: a mostly transparent tile with a few vertical grime
+// smears that fade out as they run down. Decal planes carrying it bring the
+// rain-wash under roof edges and sills without a second wall texture.
+function world_paintStreak(ctx, width, height, rand) {
+  ctx.clearRect(0, 0, width, height);
+  for (let index = 0; index < 3; index += 1) {
+    const x = ((index + 0.5) / 3) * width + (rand() - 0.5) * width * 0.14;
+    const w = width * (0.06 + rand() * 0.1);
+    const run = height * (0.5 + rand() * 0.5);
+    const streak = ctx.createLinearGradient(0, 0, 0, run);
+    streak.addColorStop(0, 'rgba(26,24,20,0.5)');
+    streak.addColorStop(0.35, 'rgba(30,28,24,0.26)');
+    streak.addColorStop(1, 'rgba(30,28,24,0)');
+    ctx.fillStyle = streak;
+    ctx.fillRect(x - w / 2, 0, w, run);
   }
 }
 
@@ -1089,6 +1249,11 @@ function world_buildParts(root, model, material, cylinderMaterial, glowTexture) 
         // against this, never against last frame's result, so the sizing
         // cannot drift as the camera moves.
         base: sprite.scale.clone(),
+        // The chip and the part's physical sign are two faces of the same
+        // label: the id is how the swap pass pairs them, and `sign` is filled
+        // in once the sign geometry exists.
+        partId: part.id,
+        sign: null,
       });
     }
 
@@ -1103,6 +1268,256 @@ function world_buildParts(root, model, material, cylinderMaterial, glowTexture) 
     });
   }
   return { picks, boxes, labels };
+}
+
+// ------------------------------------------------------------- world signage
+//
+// scene3d decides where each sign stands (part.sign); this pass gives it a body.
+// Every label is baked into ONE canvas atlas — one row per label, in author
+// order — and every sign is merged into two BufferGeometries, so a scene of any
+// size pays two extra draw calls (plus one shadow pass) no matter how many
+// signs it carries. The board quad samples its own row of the atlas, so the same
+// board material serves every label and no per-part material is ever created.
+const WORLD_SIGN = {
+  atlasW: 1024,        // atlas width in pixels
+  row: 72,             // atlas pixels per label row
+  font: 42,            // engraved text size in pixels
+  pad: 14,             // padding either side of the text inside a row
+  boardH: 0.42,        // board height in world units
+  frame: 0.05,         // metal frame border around the paper
+  depth: 0.05,         // board and frame thickness
+  post: 0.08,          // post thickness
+  base: 0.22,          // base plate side
+  paper: '#f2ecdc',    // the same paper + ink in both themes
+  ink: '#2a2e34',
+};
+
+// A screenshot-friendly HUD swap: a board at least this many pixels tall reads
+// as a sign and its chip fades out; below the lower bound the chip is all there
+// is and the sign is invisible. The band between is the crossfade.
+const WORLD_SIGN_SWAP_ON = 22;
+const WORLD_SIGN_SWAP_OFF = 14;
+
+function world_pow2Ceil(value) {
+  let size = 1;
+  while (size < value) size *= 2;
+  return size;
+}
+
+// Push one quad, in order, as two triangles. Flat normals throughout: a sign is
+// small and low-poly, so per-face lighting is all it needs.
+function world_signQuad(target, corners, normal, uvs) {
+  const { pos, nor, uv, col } = target;
+  const order = [0, 1, 2, 0, 2, 3];
+  for (const at of order) {
+    const point = corners[at];
+    pos.push(point[0], point[1], point[2]);
+    nor.push(normal[0], normal[1], normal[2]);
+    uv.push(uvs[at][0], uvs[at][1]);
+    // Alpha starts at 0: a sign is invisible until the swap pass has measured
+    // it, which also means a frame that never runs the pass shows no signs.
+    col.push(1, 1, 1, 0);
+  }
+}
+
+// A yawed box, six quads. Local half-extents are rotated about Y then moved to
+// the world centre; the corner table keeps the winding outward on every face so
+// the metal reads solid from any orbit angle.
+const WORLD_SIGN_BOX_FACES = [
+  { n: [1, 0, 0], q: [[1, -1, -1], [1, -1, 1], [1, 1, 1], [1, 1, -1]] },
+  { n: [-1, 0, 0], q: [[-1, -1, 1], [-1, -1, -1], [-1, 1, -1], [-1, 1, 1]] },
+  { n: [0, 1, 0], q: [[-1, 1, 1], [1, 1, 1], [1, 1, -1], [-1, 1, -1]] },
+  { n: [0, -1, 0], q: [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]] },
+  { n: [0, 0, 1], q: [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]] },
+  { n: [0, 0, -1], q: [[1, -1, -1], [-1, -1, -1], [-1, 1, -1], [1, 1, -1]] },
+];
+const WORLD_SIGN_BOX_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
+
+function world_signBox(target, center, half, yaw) {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  for (const face of WORLD_SIGN_BOX_FACES) {
+    const corners = face.q.map(([x, y, z]) => {
+      const hx = x * half[0];
+      const hy = y * half[1];
+      const hz = z * half[2];
+      return [
+        center[0] + hx * cos + hz * sin,
+        center[1] + hy,
+        center[2] - hx * sin + hz * cos,
+      ];
+    });
+    const normal = [
+      face.n[0] * cos + face.n[2] * sin,
+      face.n[1],
+      -face.n[0] * sin + face.n[2] * cos,
+    ];
+    world_signQuad(target, corners, normal, WORLD_SIGN_BOX_UV);
+  }
+}
+
+// Bake every part label into one atlas and return the per-part UV rects. Rows
+// run in author order, so the atlas is a pure function of the model.
+function world_signAtlas(model) {
+  const entries = model.parts.filter((part) => part.label && part.sign);
+  if (!entries.length) return null;
+  const rows = entries.length;
+  const height = world_pow2Ceil(Math.max(512, rows * WORLD_SIGN.row));
+  const canvas = world_canvasOf(WORLD_SIGN.atlasW, height);
+  const ctx = canvas.getContext('2d');
+  ctx.font = `700 ${WORLD_SIGN.font}px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+  ctx.textBaseline = 'middle';
+  const rects = new Map();
+  for (let row = 0; row < rows; row += 1) {
+    const y0 = row * WORLD_SIGN.row;
+    // The whole row band is paper; the board only samples the text's width, so
+    // the panel edge stays a clean vertical cut rather than a faint seam.
+    ctx.fillStyle = WORLD_SIGN.paper;
+    ctx.fillRect(0, y0, WORLD_SIGN.atlasW, WORLD_SIGN.row);
+    const textW = ctx.measureText(entries[row].label).width;
+    const contentW = Math.min(WORLD_SIGN.atlasW, Math.ceil(textW) + WORLD_SIGN.pad * 2);
+    // Engraved ink: a pale highlight one pixel down, then the dark glyph on top.
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText(entries[row].label, WORLD_SIGN.pad, y0 + WORLD_SIGN.row / 2 + 1.4);
+    ctx.fillStyle = WORLD_SIGN.ink;
+    ctx.fillText(entries[row].label, WORLD_SIGN.pad, y0 + WORLD_SIGN.row / 2);
+    // CanvasTexture flips Y, so v=1 is the top row of the canvas.
+    rects.set(entries[row].id, {
+      u0: 0,
+      u1: contentW / WORLD_SIGN.atlasW,
+      v0: 1 - (y0 + WORLD_SIGN.row) / height,
+      v1: 1 - y0 / height,
+      aspect: contentW / WORLD_SIGN.row,
+    });
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.generateMipmaps = true;
+  texture.anisotropy = WORLD_ANISOTROPY;
+  texture.needsUpdate = true;
+  world_textureCache.set('signAtlas', texture);
+  return { texture, rects };
+}
+
+// Build every sign's body and merge it into two meshes. Returns the two colour
+// attributes the swap pass writes alpha into, one descriptor per sign for the
+// per-frame screen-size test, and the part-id -> descriptor lookup that pairs
+// each sign back to its chip.
+function world_buildSigns(root, model, lite) {
+  const atlas = world_signAtlas(model);
+  if (!atlas) return { signs: [], metalColor: null, boardColor: null, byPart: new Map() };
+
+  const metal = { pos: [], nor: [], uv: [], col: [] };
+  const board = { pos: [], nor: [], uv: [], col: [] };
+  const signs = [];
+  const byPart = new Map();
+
+  for (const part of model.parts) {
+    const sign = part.sign;
+    const rect = sign && atlas.rects.get(part.id);
+    if (!rect) continue;
+    const boardW = WORLD_SIGN.boardH * rect.aspect;
+    const boardBottom = sign.ground + sign.postH;
+    const paperY = boardBottom + WORLD_SIGN.boardH / 2 + WORLD_SIGN.frame;
+    const yaw = sign.yaw;
+    const nx = Math.sin(yaw);
+    const nz = Math.cos(yaw);
+
+    const metalStart = metal.col.length / 4;
+    // Post, grounded on the part's own surface.
+    world_signBox(metal, [sign.x, sign.ground + sign.postH / 2, sign.z],
+      [WORLD_SIGN.post / 2, sign.postH / 2, WORLD_SIGN.post / 2], 0);
+    // Framed board, facing outward from the wall it stands beside.
+    world_signBox(metal, [sign.x, paperY, sign.z],
+      [boardW / 2 + WORLD_SIGN.frame, WORLD_SIGN.boardH / 2 + WORLD_SIGN.frame, WORLD_SIGN.depth / 2], yaw);
+    // Base plate at the foot of the post.
+    world_signBox(metal, [sign.x, sign.ground + 0.015, sign.z],
+      [WORLD_SIGN.base / 2, 0.015, WORLD_SIGN.base / 2], 0);
+    const metalCount = metal.col.length / 4 - metalStart;
+
+    // The paper quad sits just proud of the frame, offset along the board
+    // normal so it clears the post it is bolted to.
+    const boardStart = board.col.length / 4;
+    const offset = WORLD_SIGN.post / 2 + WORLD_SIGN.depth / 2 + 0.008;
+    const cx = sign.x + nx * offset;
+    const cz = sign.z + nz * offset;
+    const rx = Math.cos(yaw);
+    const rz = -Math.sin(yaw);
+    const hw = boardW / 2;
+    const hh = WORLD_SIGN.boardH / 2;
+    const corners = [
+      [cx - rx * hw, paperY - hh, cz - rz * hw],
+      [cx + rx * hw, paperY - hh, cz + rz * hw],
+      [cx + rx * hw, paperY + hh, cz + rz * hw],
+      [cx - rx * hw, paperY + hh, cz - rz * hw],
+    ];
+    world_signQuad(board, corners, [nx, 0, nz], [
+      [rect.u0, rect.v0], [rect.u1, rect.v0], [rect.u1, rect.v1], [rect.u0, rect.v1],
+    ]);
+    const boardCount = board.col.length / 4 - boardStart;
+
+    const entry = {
+      partId: part.id,
+      metalStart,
+      metalCount,
+      boardStart,
+      boardCount,
+      anchor: new Vector3(sign.x, paperY, sign.z),
+      boardH: WORLD_SIGN.boardH,
+      // -1 is a sentinel, not a real alpha: it forces the first swap pass to
+      // write the attribute even when the sign should start fully hidden.
+      alpha: -1,
+    };
+    signs.push(entry);
+    byPart.set(part.id, entry);
+  }
+
+  const geometryOf = (target) => {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(target.pos), 3));
+    geometry.setAttribute('normal', new BufferAttribute(new Float32Array(target.nor), 3));
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(target.uv), 2));
+    geometry.setAttribute('color', new BufferAttribute(new Float32Array(target.col), 4));
+    return geometry;
+  };
+
+  const metalMaterial = new MeshStandardMaterial({
+    color: new Color(world_shade(tokenHex('steel', model.theme), -0.18)),
+    roughness: 0.5,
+    metalness: 0.72,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+  });
+  const boardMaterial = new MeshStandardMaterial({
+    map: atlas.texture,
+    roughness: 0.82,
+    metalness: 0.0,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    side: FrontSide,
+  });
+
+  const metalMesh = new Mesh(geometryOf(metal), metalMaterial);
+  const boardMesh = new Mesh(geometryOf(board), boardMaterial);
+  // Only the metal casts: the paper sits inside the frame's silhouette, so a
+  // second shadow pass for it would buy nothing. Lite clients skip it entirely.
+  metalMesh.castShadow = !lite;
+  boardMesh.castShadow = false;
+  metalMesh.renderOrder = 4;
+  boardMesh.renderOrder = 5;
+  root.add(metalMesh);
+  root.add(boardMesh);
+
+  return {
+    signs,
+    metalColor: metalMesh.geometry.attributes.color,
+    boardColor: boardMesh.geometry.attributes.color,
+    byPart,
+  };
 }
 
 // One strata tile per this many units of slab edge: enough repeats that the
@@ -1973,6 +2388,22 @@ function world_instanceMaterial(skin, { roughness, metalness }) {
   });
 }
 
+// The building tiles — window, door, louvre, streak — are painted in real
+// colours, not near-white greys, so this material leaves color at white and
+// lets the tile carry the whole look. Same three-job map as the family skins
+// (albedo, bump, roughness) where the paint has readable gradient in it.
+function world_paintedMaterial(texture, { roughness = 0.7, metalness = 0.05, bumpScale = 0.03 } = {}) {
+  return new MeshStandardMaterial({
+    color: new Color(0xffffff),
+    roughness,
+    metalness,
+    map: texture,
+    bumpMap: texture,
+    bumpScale,
+    roughnessMap: texture,
+  });
+}
+
 /**
  * One InstancedMesh from a list of {pos, scale, rotY, hex} pieces.
  *
@@ -2321,6 +2752,94 @@ function world_buildLampGlow(root, spots, glowTexture) {
   return made;
 }
 
+// --------------------------------------------- building detail in the round
+//
+// scene3d plans the roof kit, windows, doors and weathering as per-material
+// lists; this turns each list into one InstancedMesh. Nothing here is
+// per-building, so a whole district of structures costs a handful of draw
+// calls, and the paint is four shared tiles however many buildings there are.
+function world_buildBuildingDetail(root, model) {
+  const plan = model.buildings;
+  if (!plan || !plan.count) return [];
+  const dark = model.theme === 'dark';
+  const steelSkin = world_familySkin('metal', 'plain').texture;
+
+  const added = [];
+  const add = (mesh) => { if (mesh) { root.add(mesh); added.push(mesh); } };
+
+  // Parapets, hatches, conduits, lamp housings and the antenna bars: the same
+  // steel skin the street furniture uses, tinted per piece (wall tone for a
+  // parapet, a dark grey for a conduit, galvanised for a hatch).
+  add(world_instances('building:steel', new BoxGeometry(1, 1, 1),
+    world_instanceMaterial(steelSkin, { roughness: 0.6, metalness: 0.34 }), plan.steel));
+
+  // HVAC housings carry their own louvre tile, a little less rough than the
+  // rest of the metal so the key light catches the slats.
+  const hvacSkin = world_finishTexture(world_textureCache, 'building:hvac', world_paintHvac, { repeat: 1, srgb: true });
+  add(world_instances('building:hvac', new BoxGeometry(1, 1, 1),
+    world_paintedMaterial(hvacSkin, { roughness: 0.48, metalness: 0.32, bumpScale: 0.03 }), plan.hvac));
+
+  // Glass: the window panes (flat quads) and the skylight strips (thin boxes)
+  // share one tile and one low-roughness material.
+  const glassSkin = world_finishTexture(world_textureCache, 'building:window', world_paintWindow, { repeat: 1, srgb: true, clamp: true });
+  const glassMaterial = world_paintedMaterial(glassSkin, { roughness: 0.22, metalness: 0.12, bumpScale: 0 });
+  const windows = world_instances('building:windows', new PlaneGeometry(1, 1), glassMaterial, plan.glass);
+  if (windows) windows.castShadow = false;
+  add(windows);
+  add(world_instances('building:skylight', new BoxGeometry(1, 1, 1), glassMaterial, plan.skylight));
+
+  // Doors: a painted roller on a flat quad flush with the wall.
+  const doorSkin = world_finishTexture(world_textureCache, 'building:door', world_paintDoor, { repeat: 1, srgb: true, clamp: true });
+  const doorMaterial = world_paintedMaterial(doorSkin, { roughness: 0.66, metalness: 0.2, bumpScale: 0.02 });
+  const doors = world_instances('building:doors', new PlaneGeometry(1, 1), doorMaterial, plan.doors);
+  if (doors) doors.castShadow = false;
+  add(doors);
+
+  // Downpipes, duct stubs, vent-cap stacks and the antenna mast.
+  add(world_instances('building:pipes', new CylinderGeometry(0.5, 0.5, 1, 12),
+    world_instanceMaterial(steelSkin, { roughness: 0.55, metalness: 0.4 }), plan.pipes));
+
+  // Rounded vent caps: a low dome in the same galvanised steel.
+  add(world_instances('building:caps', new SphereGeometry(0.5, 12, 8),
+    world_instanceMaterial(steelSkin, { roughness: 0.5, metalness: 0.4 }), plan.caps));
+
+  // Bulkhead lamps beside the doors: warm after dark, off by day, the same
+  // emissive trick the street lamps use.
+  if (plan.lights.length) {
+    const lampMaterial = new MeshStandardMaterial({
+      color: new Color(dark ? '#3f3626' : '#efe8d8'),
+      emissive: new Color(dark ? '#ffcf8a' : '#f4ecd8'),
+      emissiveIntensity: dark ? 2.2 : 0.3,
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+    const lights = world_instances('building:lights', new BoxGeometry(1, 1, 1), lampMaterial, plan.lights);
+    if (lights) lights.castShadow = false;
+    add(lights);
+  }
+
+  // Weathering decals: transparent, no shadow either way, nudged toward the
+  // camera so a plane sitting on a wall cannot z-fight it.
+  if (plan.streaks.length) {
+    const streakSkin = world_finishTexture(world_textureCache, 'building:streak', world_paintStreak, { repeat: 1, srgb: true, clamp: true });
+    const streakMaterial = new MeshStandardMaterial({
+      map: streakSkin,
+      transparent: true,
+      depthWrite: false,
+      roughness: 1,
+      metalness: 0,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const streaks = world_instances('building:streaks', new PlaneGeometry(1, 1), streakMaterial, plan.streaks);
+    if (streaks) { streaks.castShadow = false; streaks.receiveShadow = false; }
+    add(streaks);
+  }
+
+  return added;
+}
+
 // ------------------------------------------------------------------- camera
 
 // Eight corners of the box the hero shot has to contain: the slab plus
@@ -2395,6 +2914,26 @@ function world_fitHero(corners, start, direction, tanX, tanY, fill) {
   return { target, distance };
 }
 
+// The fog density is tuned for the reference framing: a subject whose hero box
+// is about WORLD_FOG_REFERENCE units across is shot from the distance where
+// 0.0037 reads as mood rather than milk. A bigger subject is shot from
+// proportionally farther back, so its haze has to thin by the same factor or
+// the far half dissolves into flat background. The extent is that box's
+// horizontal half-diagonal - the slab plus its content, read off the bounds
+// mount already builds - and the clamp pins small scenes to the tuned value
+// while flooring the scale so even a very long subject never fully clears the
+// air.
+const WORLD_FOG_REFERENCE = 23;
+const WORLD_FOG_FLOOR = 0.3;
+
+function world_fogScale(model) {
+  const fp = model.slab.footprint;
+  const spanX = Math.max(fp.maxX, model.content.max[0]) - Math.min(fp.minX, model.content.min[0]);
+  const spanZ = Math.max(fp.maxZ, model.content.max[2]) - Math.min(fp.minZ, model.content.min[2]);
+  const extent = Math.hypot(spanX / 2, spanZ / 2);
+  return world_clamp(WORLD_FOG_REFERENCE / extent, WORLD_FOG_FLOOR, 1);
+}
+
 function world_homeFraming(model, aspect, fov = WORLD_HERO_FOV) {
   // Frame the slab and everything on it: the hero shot is a photograph of a
   // model on a plinth, and the plinth is part of the subject.
@@ -2430,8 +2969,7 @@ function world_hud(model, stats, debug) {
   const hud = document.querySelector('.hud');
   if (!hud) return null;
   const hint = hud.querySelector('.hint');
-  const controls = 'drag to orbit · scroll to zoom · double-click a part to focus · V first person';
-  if (hint) hint.textContent = controls;
+  if (hint) hint.textContent = WORLD_HINT_ORBIT;
   // The counters are a development aid. They are not part of the picture, so
   // nothing is appended at all unless ?debug=1 asked for them.
   if (!debug) return { hint, badge: null };
@@ -2576,8 +3114,11 @@ export function world_mount(options = {}) {
   const stage = new Scene();
   stage.background = world_skyTexture(model.theme);
   // Half the haze in the light theme: at 0.0075 the far side of the slab lost
-  // all its contrast and the cables read as scaffolding floating in milk.
-  stage.fog = new FogExp2(new Color(dark ? '#0a1018' : '#e6dcc6'), dark ? 0.0062 : 0.0037);
+  // all its contrast and the cables read as scaffolding floating in milk. The
+  // scale below thins that haze for a long subject, which is photographed from
+  // far enough back that a fixed density would swallow its far half instead.
+  const fogBase = dark ? 0.0062 : 0.0037;
+  stage.fog = new FogExp2(new Color(dark ? '#0a1018' : '#e6dcc6'), fogBase * world_fogScale(model));
 
   const camera = new PerspectiveCamera(WORLD_HERO_FOV, (host.clientWidth || 1) / (host.clientHeight || 1), 0.1, 2000);
   const home = world_homeFraming(model, camera.aspect);
@@ -2604,6 +3145,15 @@ export function world_mount(options = {}) {
   const environment = world_buildEnvironment(root, model);
   world_buildLampGlow(root, environment.sprites, glowTexture);
   const built = world_buildParts(root, model, material, cylinderMaterial, glowTexture);
+  // The physical signs, merged into two meshes, paired back to their chips so
+  // the legibility swap can fade one in as it fades the other out.
+  const signBuild = world_buildSigns(root, model, lite);
+  built.signs = signBuild.signs;
+  built.signMetalColor = signBuild.metalColor;
+  built.signBoardColor = signBuild.boardColor;
+  for (const label of built.labels) label.sign = signBuild.byPart.get(label.partId) || null;
+  // Roofs, windows, doors and weathering, in one instanced pass over the plan.
+  world_buildBuildingDetail(root, model);
   const overlays = world_buildLinks(root, model, material, glowTexture);
   const flows = world_buildFlows(root, model, glowTexture);
 
@@ -2632,13 +3182,14 @@ export function world_mount(options = {}) {
   const hud = world_hud(model, model.stats, query.debug);
 
   // ------------------------------------------------------------ navigation
+  // The walk table is planned once, in the pure layer, from the model: the
+  // surfaces to stand on, the solids that block, and a deterministic spawn.
+  const walk = planWalk(model);
   // First person spawns on the near edge of the slab, facing the machinery.
-  const fpStart = new Vector3(
-    world_clamp(model.content.center[0], model.slab.footprint.minX + 1.5, model.slab.footprint.maxX - 1.5),
-    WORLD_FP_HEIGHT,
-    world_clamp(model.content.max[2] + 3.5, model.slab.footprint.minZ + 1.5, model.slab.footprint.maxZ - 1.5),
-  );
-  const fpYaw = Math.atan2(fpStart.x - model.content.center[0], fpStart.z - model.content.center[2]);
+  // The x/z/yaw come from the plan; the eye keeps its frozen height until the
+  // first step, so a `?cam=fp` capture does not move.
+  const fpStart = new Vector3(walk.spawn.x, WORLD_FP_HEIGHT, walk.spawn.z);
+  const fpYaw = walk.spawn.yaw;
 
   const state = {
     mode: 'orbit',
@@ -2649,6 +3200,18 @@ export function world_mount(options = {}) {
     pitch: -0.08,
     fp: fpStart,
     saved: null,
+  };
+
+  // A teleport (`?cam=fp&fx=&fz=`) lands the eye directly on the surface there,
+  // so a mid-slab capture is framed from the walking height rather than the
+  // spawn height.
+  const fpGroundEye = (x, z) => {
+    const ground = walkGroundY(walk, x, z);
+    return (ground === null ? 0 : ground) + WALK_EYE;
+  };
+
+  const setWalkHint = (on) => {
+    if (hud && hud.hint) hud.hint.textContent = on ? WORLD_HINT_WALK : WORLD_HINT_ORBIT;
   };
 
   const flyTo = (framing) => {
@@ -2704,7 +3267,6 @@ export function world_mount(options = {}) {
     controls.enabled = false;
     setFirstPersonLook(true);
     state.fly = null;
-    resolveCollisions(clampToSlab(state.fp));
     camera.position.copy(state.fp);
     if (renderer.domElement.requestPointerLock) {
       try {
@@ -2713,7 +3275,8 @@ export function world_mount(options = {}) {
         /* pointer lock is a nicety; walking still works without it */
       }
     }
-    if (hud && hud.badge) hud.badge.textContent = 'first person · WASD move · shift sprint · Esc exit';
+    setWalkHint(true);
+    if (hud && hud.badge) hud.badge.textContent = 'first person · WASD walk · shift run · Esc exit';
   };
 
   const exitFirstPerson = () => {
@@ -2726,6 +3289,7 @@ export function world_mount(options = {}) {
       controls.target.copy(state.saved.target);
       controls.update();
     }
+    setWalkHint(false);
     if (hud && hud.badge) {
       hud.badge.textContent = `${model.stats.parts} parts · ${model.stats.links} links · ${model.stats.pulses} pulses`;
     }
@@ -2768,51 +3332,26 @@ export function world_mount(options = {}) {
   };
 
   // ------------------------------------------------------------ simulation
-  const clampToSlab = (position) => {
-    const pad = 0.4;
-    position.x = world_clamp(position.x, model.slab.footprint.minX + pad, model.slab.footprint.maxX - pad);
-    position.z = world_clamp(position.z, model.slab.footprint.minZ + pad, model.slab.footprint.maxZ - pad);
-    return position;
-  };
-
-  // Soft AABB collision: push the walker out along the shallowest axis so you
-  // bump into boxes instead of walking through them.
-  const resolveCollisions = (position) => {
-    for (const box of built.boxes) {
-      if (position.y < box.min[1] - WORLD_FP_HEIGHT || position.y > box.max[1] + WORLD_FP_HEIGHT) continue;
-      const minX = box.min[0] - WORLD_FP_RADIUS;
-      const maxX = box.max[0] + WORLD_FP_RADIUS;
-      const minZ = box.min[2] - WORLD_FP_RADIUS;
-      const maxZ = box.max[2] + WORLD_FP_RADIUS;
-      if (position.x <= minX || position.x >= maxX || position.z <= minZ || position.z >= maxZ) continue;
-      const pushes = [
-        { axis: 'x', amount: minX - position.x },
-        { axis: 'x', amount: maxX - position.x },
-        { axis: 'z', amount: minZ - position.z },
-        { axis: 'z', amount: maxZ - position.z },
-      ];
-      let best = pushes[0];
-      for (const push of pushes) if (Math.abs(push.amount) < Math.abs(best.amount)) best = push;
-      position[best.axis] += best.amount;
-    }
-    return position;
-  };
-
+  // Walking is a pure step: read the keys into an input vector and hand the
+  // whole pose to walkStep, which slides around walls, clamps to the slab and
+  // settles the eye onto the surface underfoot. Keep the camera in sync with
+  // the returned pose and keep looking along yaw/pitch.
   const stepFirstPerson = (delta) => {
-    const speed = WORLD_FP_SPEED * (state.keys.has('shift') ? WORLD_FP_SPRINT : 1) * delta;
-    const forward = new Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
-    const right = new Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
-    const move = new Vector3();
-    if (state.keys.has('w') || state.keys.has('arrowup')) move.add(forward);
-    if (state.keys.has('s') || state.keys.has('arrowdown')) move.sub(forward);
-    if (state.keys.has('d') || state.keys.has('arrowright')) move.add(right);
-    if (state.keys.has('a') || state.keys.has('arrowleft')) move.sub(right);
-    if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(speed);
-      state.fp.add(move);
-      resolveCollisions(clampToSlab(state.fp));
-    }
-    state.fp.y = WORLD_FP_HEIGHT;
+    const keys = state.keys;
+    const input = {
+      forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0)
+        - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
+      strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0)
+        - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
+      run: keys.has('shift'),
+    };
+    const next = walkStep(
+      { x: state.fp.x, z: state.fp.z, y: state.fp.y, yaw: state.yaw },
+      input,
+      delta,
+      walk,
+    );
+    state.fp.set(next.x, next.y, next.z);
     camera.position.copy(state.fp);
     const look = new Vector3(
       -Math.sin(state.yaw) * Math.cos(state.pitch),
@@ -2898,13 +3437,49 @@ export function world_mount(options = {}) {
   const stepLabels = () => {
     const tan = Math.tan((camera.fov * Math.PI) / 360);
     const fp = state.mode === 'fp';
+    const halfPx = (host.clientHeight || window.innerHeight) / 2;
+
+    // The swap: how tall the board would be on screen decides which face of the
+    // label belongs. Close in the sign reads and its chip fades; far off the
+    // board is a sliver and only the chip is legible. The frozen `?t=` pose is
+    // evaluated on the same camera, so a capture is deterministic.
+    const { signs, signMetalColor, signBoardColor } = built;
+    if (signs.length) {
+      let metalDirty = false;
+      let boardDirty = false;
+      for (const sign of signs) {
+        const distance = Math.max(0.001, sign.anchor.distanceTo(camera.position));
+        const px = (sign.boardH * halfPx) / (distance * tan);
+        const t = world_clamp(
+          (px - WORLD_SIGN_SWAP_OFF) / (WORLD_SIGN_SWAP_ON - WORLD_SIGN_SWAP_OFF), 0, 1,
+        );
+        if (t === sign.alpha) continue;
+        sign.alpha = t;
+        const metalArray = signMetalColor.array;
+        for (let index = 0; index < sign.metalCount; index += 1) {
+          metalArray[(sign.metalStart + index) * 4 + 3] = t;
+        }
+        const boardArray = signBoardColor.array;
+        for (let index = 0; index < sign.boardCount; index += 1) {
+          boardArray[(sign.boardStart + index) * 4 + 3] = t;
+        }
+        metalDirty = true;
+        boardDirty = true;
+      }
+      if (metalDirty) signMetalColor.needsUpdate = true;
+      if (boardDirty) signBoardColor.needsUpdate = true;
+    }
+
     for (const label of built.labels) {
       label.sprite.getWorldPosition(labelAnchor);
       const distance = labelAnchor.distanceTo(camera.position);
       const fit = world_labelClamp(distance, tan, labelReach, fp);
+      // The chip and the sign are complementary: where the sign has faded in,
+      // the chip has faded out by the same amount.
+      const chip = fit.opacity * (1 - (label.sign ? label.sign.alpha : 0));
       label.sprite.scale.set(label.base.x * fit.scale, label.base.y * fit.scale, 1);
-      label.sprite.material.opacity = fit.opacity;
-      label.sprite.visible = fit.opacity > 0.02;
+      label.sprite.material.opacity = chip;
+      label.sprite.visible = chip > 0.02;
     }
   };
 
@@ -2928,9 +3503,16 @@ export function world_mount(options = {}) {
     state.mode = 'fp';
     controls.enabled = false;
     setFirstPersonLook(true);
-    resolveCollisions(clampToSlab(state.fp));
+    // A capture may teleport to a mid-slab pose with ?fx=&fz=; without them the
+    // planned spawn stands, at its frozen eye height, so the default `?cam=fp`
+    // view is unchanged.
+    const { fx, fz } = query;
+    if (fx !== null && fz !== null) {
+      state.fp.set(fx, fpGroundEye(fx, fz), fz);
+    }
     camera.position.copy(state.fp);
     stepFirstPerson(0);
+    setWalkHint(true);
   }
   if (query.focus) {
     const part = model.parts.find((candidate) => candidate.id === query.focus);

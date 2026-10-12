@@ -46,10 +46,19 @@ import {
   planEnvironment,
   planGate,
   planIntersections,
+  planSigns,
   planTermini,
+  planWalk,
   repairTermini,
   terminusStub,
   validateNetwork,
+  walkGroundY,
+  walkStep,
+  WALK_EYE,
+  WALK_FOOT_CLEAR,
+  WALK_RADIUS,
+  WALK_RUN,
+  WALK_SPEED,
 } from './scene3d.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -269,6 +278,32 @@ test('buildWorld counts the kafka example exactly', () => {
 
 test('buildWorld rejects a non-object scene', () => {
   assert.throws(() => buildWorld(null), /requires a scene object/);
+});
+
+test('buildWorld grounds one physical sign on every labelled part, on the slab', () => {
+  const world = buildWorld(example('kafka-pipeline'));
+  const labelled = world.parts.filter((part) => part.label);
+  assert.ok(labelled.length > 0);
+  for (const part of labelled) {
+    assert.ok(part.sign, `${part.id} needs a sign`);
+    assert.ok(part.sign.postH > 0, `${part.id} needs a post`);
+    assert.ok(part.sign.x > world.slab.footprint.minX && part.sign.x < world.slab.footprint.maxX);
+    assert.ok(part.sign.z > world.slab.footprint.minZ && part.sign.z < world.slab.footprint.maxZ);
+  }
+});
+
+test('planSigns gives a cylinder and a slab-level plate a signpost too', () => {
+  const world = buildWorld(example('three-tier-web'));
+  const cylinder = world.parts.find((part) => part.id === 'redis');
+  const plate = world.parts.find((part) => part.id === 'queue');
+  assert.ok(cylinder && cylinder.sign && cylinder.sign.postH > 0);
+  assert.ok(plate && plate.sign && plate.sign.postH > 0);
+});
+
+test('planSigns is a pure function of the part list', () => {
+  const first = buildWorld(example('rea')).parts.map((part) => part.sign);
+  const second = buildWorld(example('rea')).parts.map((part) => part.sign);
+  assert.deepEqual(second, first);
 });
 
 // ------------------------------------------------------------- texture helpers
@@ -1370,3 +1405,141 @@ test('a barrier arm is a row of alternating blocks covering its own length', () 
   const inner = (left.pos[0] + left.size[0] / 2) - (right.pos[0] - right.size[0] / 2);
   assert.ok(inner < 0, 'the arms stop short of each other');
 });
+
+// ------------------------------------------------------------ first-person walk
+
+// A hand-built model shaped exactly like the runtime's: a slab footprint, parts
+// with a world centre and size, and a content box the spawn is derived from.
+// The tier is a raised floor plate, the machine is a solid, and the coil and
+// curb are below the obstacle bar.
+const walkModel = {
+  slab: { sourceId: 'ground', footprint: { minX: -10, maxX: 10, minZ: -10, maxZ: 10 } },
+  parts: [
+    { id: 'tier', kind: 'plate', pos: [0, 0.15, 0], size: [6, 0.3, 6] },
+    { id: 'machine', kind: 'box', pos: [-6, 1.25, -6], size: [3, 2.5, 3] },
+    { id: 'coil', kind: 'cylinder', pos: [6, 0.1, 6], size: [1.2, 0.2, 1.2] },
+    { id: 'curb', kind: 'box', pos: [7, 0.3, 0], size: [0.4, 0.4, 0.4] },
+  ],
+  content: { min: [-8, 0, -8], max: [8, 4, 8], center: [0, 2, 0], radius: 8 },
+};
+
+function flatWalk(obstacles = []) {
+  return {
+    speed: WALK_SPEED,
+    run: WALK_RUN,
+    radius: WALK_RADIUS,
+    eye: WALK_EYE,
+    footClear: WALK_FOOT_CLEAR,
+    bounds: { minX: -10, maxX: 10, minZ: -10, maxZ: 10 },
+    surfaces: [{ id: 'slab', y: 0, footprint: { minX: -10, maxX: 10, minZ: -10, maxZ: 10 } }],
+    obstacles,
+  };
+}
+
+test('planWalk builds surfaces, obstacles and a deterministic spawn', () => {
+  const walk = planWalk(walkModel);
+  // Highest first: the raised tier, then the slab it stands on.
+  assert.deepEqual(walk.surfaces.map((surface) => surface.id), ['tier', 'slab']);
+  assert.equal(walk.surfaces[0].y, 0.3);
+  assert.equal(walk.surfaces[1].y, 0);
+  assert.deepEqual(walk.surfaces[0].footprint, { minX: -3, maxX: 3, minZ: -3, maxZ: 3 });
+  // Only the big solid blocks; the coil and the curb fall under the bar.
+  assert.deepEqual(walk.obstacles.map((box) => box.id), ['machine']);
+  assert.deepEqual(walk.obstacles[0].min, [-7.5, 0, -7.5]);
+  assert.deepEqual(walk.obstacles[0].max, [-4.5, 2.5, -4.5]);
+  // The spawn is on the slab, in front of the content, facing the centre.
+  const spawn = walk.spawn;
+  assert.ok(spawn.x > walk.bounds.minX && spawn.x < walk.bounds.maxX);
+  assert.ok(spawn.z > walkModel.content.max[2], 'the spawn stands in front of the content');
+  assert.equal(spawn.yaw, 0);
+  // Same model, same plan.
+  assert.deepEqual(planWalk(walkModel), walk);
+});
+
+test('planWalk is deterministic on a real built world', () => {
+  const model = buildWorld(example('kafka-pipeline'));
+  const first = planWalk(model);
+  const second = planWalk(model);
+  assert.deepEqual(second, first);
+  // The concrete deck is always a surface, and its slab source survives.
+  const base = first.surfaces[first.surfaces.length - 1];
+  assert.equal(base.id, 'slab');
+  assert.equal(base.source, model.slab.sourceId);
+  assert.ok(first.obstacles.length > 0, 'a pipeline has solids to bump into');
+});
+
+test('planWalk turns a raised floor plate into a walkable surface', () => {
+  // rea models its platform as four named tier plates on top of the deck.
+  const model = buildWorld(example('rea'));
+  const walk = planWalk(model);
+  for (const id of ['tier-1', 'tier-2', 'tier-3', 'tier-4']) {
+    const surface = walk.surfaces.find((entry) => entry.id === id);
+    assert.ok(surface, `${id} should be walkable`);
+    const part = model.parts.find((entry) => entry.id === id);
+    assert.equal(surface.y, part.pos[1] + part.size[1] / 2);
+    assert.ok(surface.y > 0, 'the tier stands above the deck');
+  }
+  // A tier is a floor, never also a wall.
+  assert.equal(walk.obstacles.some((box) => box.id.startsWith('tier-')), false);
+});
+
+test('walkGroundY returns the highest surface footprint under the point', () => {
+  const walk = planWalk(walkModel);
+  assert.equal(walkGroundY(walk, 0, 0), 0.3); // on the tier
+  assert.equal(walkGroundY(walk, 8, 8), 0); // on the deck
+  assert.equal(walkGroundY(walk, 20, 20), null); // off every surface
+});
+
+test('walkStep is pure and moves at 3.5 walking and 7 running', () => {
+  const start = { x: 0, z: 0, y: WALK_EYE, yaw: 0 };
+  const walked = walkStep(start, { forward: 1 }, 1, flatWalk());
+  assert.notEqual(walked, start);
+  assert.deepEqual(start, { x: 0, z: 0, y: WALK_EYE, yaw: 0 }, 'the input state is not mutated');
+  assert.ok(Math.abs(walked.z - -WALK_SPEED) < 1e-6);
+  assert.ok(Math.abs(walked.x) < 1e-9);
+  const ran = walkStep(start, { forward: 1, run: true }, 1, flatWalk());
+  assert.ok(Math.abs(ran.z - -WALK_RUN) < 1e-6);
+});
+
+test('walkStep slides along a wall instead of sticking to it', () => {
+  const walk = flatWalk([{ id: 'wall', min: [1, 0, -10], max: [2, 3, 10] }]);
+  let walker = { x: 0, z: 0, y: WALK_EYE, yaw: 0 };
+  for (let step = 0; step < 30; step += 1) {
+    walker = walkStep(walker, { forward: 1, strafe: 1 }, 1 / 30, walk);
+  }
+  // x is pinned to the wall face, one radius clear; z keeps the tangential run.
+  assert.ok(Math.abs(walker.x - (1 - WALK_RADIUS)) < 1e-6, `x was ${walker.x}`);
+  assert.ok(walker.z < -2, `the walker should slide past, z was ${walker.z}`);
+});
+
+test('walkStep never tunnels a wall at a full sprint', () => {
+  const walk = flatWalk([{ id: 'wall', min: [0.5, 0, -10], max: [0.8, 3, 10] }]);
+  let walker = { x: -1, z: 0, y: WALK_EYE, yaw: -Math.PI / 2 }; // facing +x
+  for (let step = 0; step < 30; step += 1) {
+    walker = walkStep(walker, { forward: 1, run: true }, 1 / 30, walk);
+  }
+  assert.ok(walker.x <= 0.5 - WALK_RADIUS + 1e-6, `tunnelled to ${walker.x}`);
+  assert.ok(walker.x > 0.5 - WALK_RADIUS - 1e-3, 'the walker should reach the wall');
+});
+
+test('walkStep lifts the eye onto a raised plate and back onto the deck', () => {
+  const walk = flatWalk();
+  walk.surfaces.unshift({ id: 'tier', y: 0.4, footprint: { minX: 1, maxX: 3, minZ: 1, maxZ: 3 } });
+  let onTier = { x: 2, z: 2, y: WALK_EYE, yaw: 0 }; // standing over the tier
+  for (let step = 0; step < 120; step += 1) onTier = walkStep(onTier, {}, 1 / 60, walk);
+  assert.ok(Math.abs(onTier.y - (0.4 + WALK_EYE)) < 1e-3, `eye was ${onTier.y}`);
+  let onDeck = { x: 0, z: 0, y: 0.4 + WALK_EYE, yaw: 0 }; // stepping back to the deck
+  for (let step = 0; step < 120; step += 1) onDeck = walkStep(onDeck, {}, 1 / 60, walk);
+  assert.ok(Math.abs(onDeck.y - WALK_EYE) < 1e-3, `eye was ${onDeck.y}`);
+});
+
+test('walkStep clamps to the slab and never falls off', () => {
+  const walk = flatWalk();
+  let east = { x: 9.9, z: 0, y: WALK_EYE, yaw: -Math.PI / 2 }; // facing +x
+  for (let step = 0; step < 60; step += 1) east = walkStep(east, { forward: 1, run: true }, 1 / 30, walk);
+  assert.equal(east.x, 10 - WALK_RADIUS);
+  let north = { x: 0, z: 9.9, y: WALK_EYE, yaw: Math.PI }; // facing +z
+  for (let step = 0; step < 60; step += 1) north = walkStep(north, { forward: 1, run: true }, 1 / 30, walk);
+  assert.equal(north.z, 10 - WALK_RADIUS);
+});
+
