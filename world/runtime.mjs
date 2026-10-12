@@ -12,6 +12,7 @@
 import {
   WORLD_TEXEL,
   WALK_EYE,
+  WALK_RUN_FOV,
   avenueRect,
   buildWorld,
   cylinderUvScale,
@@ -20,6 +21,8 @@ import {
   remapBoxUv,
   textureDescriptor,
   tokenHex,
+  walkBobOffset,
+  walkBobPhase,
   walkGroundY,
   walkStep,
 } from './scene3d.mjs';
@@ -34,6 +37,10 @@ const WORLD_FP_FOV = 62;
 // exact pose it has always had. Once the walker moves, the pure solver settles
 // the eye to the surface height (WALK_EYE above the floor underfoot).
 const WORLD_FP_HEIGHT = 1.3;
+// Head-bob and the run fov settle the same way the eye does: an exponential
+// toward the target, so the lens eases out as it eased in and a frozen frame
+// (delta 0) never moves. Both are skipped entirely under reduced motion.
+const WORLD_FOV_SMOOTH = 8;
 const WORLD_HINT_ORBIT = 'drag to orbit · scroll to zoom · double-click a part to focus · V first person';
 const WORLD_HINT_WALK = 'WASD walk · shift run · mouse look · V exit';
 const WORLD_FOCUS_FILL = 0.6;
@@ -3200,6 +3207,8 @@ export function world_mount(options = {}) {
     pitch: -0.08,
     fp: fpStart,
     saved: null,
+    bob: 0,
+    fpFov: WORLD_FP_FOV,
   };
 
   // A teleport (`?cam=fp&fx=&fz=`) lands the eye directly on the surface there,
@@ -3267,6 +3276,8 @@ export function world_mount(options = {}) {
     controls.enabled = false;
     setFirstPersonLook(true);
     state.fly = null;
+    state.fpFov = WORLD_FP_FOV;
+    state.bob = 0;
     camera.position.copy(state.fp);
     if (renderer.domElement.requestPointerLock) {
       try {
@@ -3351,8 +3362,28 @@ export function world_mount(options = {}) {
       delta,
       walk,
     );
+    const moved = Math.hypot(next.x - state.fp.x, next.z - state.fp.z);
+    const running = input.run && moved > 0;
+    // Head-bob and the run fov are feel, not locomotion: the phase advances by
+    // distance actually walked, so a frozen frame stays exactly still, and
+    // reduced motion drops both. The walker's own y never carries the bob.
+    let bob = 0;
+    let fov = WORLD_FP_FOV;
+    if (!reduceMotion) {
+      state.bob = walkBobPhase(state.bob, moved);
+      bob = walkBobOffset(state.bob, running);
+      state.fpFov += (WORLD_FP_FOV + (running ? WALK_RUN_FOV : 0) - state.fpFov)
+        * (1 - Math.exp(-WORLD_FOV_SMOOTH * delta));
+      fov = state.fpFov;
+    } else {
+      state.fpFov = WORLD_FP_FOV;
+    }
     state.fp.set(next.x, next.y, next.z);
-    camera.position.copy(state.fp);
+    camera.position.set(state.fp.x, state.fp.y + bob, state.fp.z);
+    if (Math.abs(camera.fov - fov) > 1e-6) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
     const look = new Vector3(
       -Math.sin(state.yaw) * Math.cos(state.pitch),
       Math.sin(state.pitch),

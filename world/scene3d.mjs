@@ -2806,6 +2806,33 @@ export const WALK_SURFACE_MIN_SPAN = 0.8; // a floor plate thinner than this is 
 export const WALK_OBSTACLE_MIN_HEIGHT = 0.6; // shorter than this is a prop, not a wall
 export const WALK_OBSTACLE_MIN_SPAN = 0.8;   // narrower than this cannot stop a body
 
+// The tallest rise a walker climbs without help. A walkable surface whose top
+// sits within this of the ground underfoot is a step; a taller one is a wall,
+// so a raised plate is reachable while a building or a crate never is. This is
+// the whole of "stairs" in this foundation: one step, no jump.
+export const WALK_STEP = 0.7;
+
+// Head-bob and run fov are view feel, not movement, so they live beside the
+// walk table and stay pure: the offset a phase and a gait produce, and the
+// phase a distance walked advances. The runtime applies them to the camera
+// only, never to the walker's own pose.
+export const WALK_BOB_WALK = 0.045; // eye rise, walking
+export const WALK_BOB_RUN = 0.06;   // eye rise, running
+export const WALK_BOB_CYCLE = 1.6;  // world units walked per full bob cycle
+export const WALK_RUN_FOV = 3.5;    // degrees the lens widens while running
+
+// Advance a bob phase by the distance actually walked. Because it is fed
+// distance and never wall-clock, a frozen frame with no input cannot move.
+export function walkBobPhase(phase, distance) {
+  return phase + distance * ((Math.PI * 2) / WALK_BOB_CYCLE);
+}
+
+// The vertical eye offset a phase and gait produce. sin(0) is 0, so a walker
+// that has not moved bobs by exactly nothing.
+export function walkBobOffset(phase, run) {
+  return Math.sin(phase) * (run ? WALK_BOB_RUN : WALK_BOB_WALK);
+}
+
 // A solid blocks a walker when it stands taller than a foot-clear and is wide
 // enough to actually stop a body. Crates, pallets, coils and signs fall under
 // the span test; the raised floor plates fall under the height test, which is
@@ -2901,6 +2928,7 @@ export function planWalk(model) {
     radius: WALK_RADIUS,
     eye: WALK_EYE,
     footClear: WALK_FOOT_CLEAR,
+    step: WALK_STEP,
     bounds: { minX: slab.minX, maxX: slab.maxX, minZ: slab.minZ, maxZ: slab.maxZ },
     surfaces,
     obstacles,
@@ -2912,28 +2940,32 @@ export function planWalk(model) {
 // face and leaves the other axis free, which is what makes a diagonal run slide
 // along a wall instead of sticking to it. Obstacles are expanded by the walker
 // radius and tested as a point, the axis-aligned Minkowski sum of a circle.
-function walkSlide(x, z, delta, walk, axis, eyeY) {
+// `walls` are the surfaces too tall to step onto this frame; they block exactly
+// like a solid, which is what keeps a walker from climbing a building.
+function walkSlide(x, z, delta, walk, axis, eyeY, walls) {
   if (delta === 0) return axis === 0 ? x : z;
   const feet = eyeY - walk.eye;
   let coord = (axis === 0 ? x : z) + delta;
   const other = axis === 0 ? z : x;
-  for (const box of walk.obstacles) {
+  const block = (box) => {
     // A solid only blocks when the walker's vertical span meets it: roof kit
     // overhead and floor plates below the feet are ignored.
-    if (box.max[1] <= feet + walk.footClear) continue;
-    if (box.min[1] >= eyeY) continue;
+    if (box.max[1] <= feet + walk.footClear) return;
+    if (box.min[1] >= eyeY) return;
     const minX = box.min[0] - walk.radius;
     const maxX = box.max[0] + walk.radius;
     const minZ = box.min[2] - walk.radius;
     const maxZ = box.max[2] + walk.radius;
     const px = axis === 0 ? coord : other;
     const pz = axis === 0 ? other : coord;
-    if (px <= minX || px >= maxX || pz <= minZ || pz >= maxZ) continue;
+    if (px <= minX || px >= maxX || pz <= minZ || pz >= maxZ) return;
     // Push back out of the face the walker came through.
     coord = delta > 0
       ? (axis === 0 ? minX : minZ)
       : (axis === 0 ? maxX : maxZ);
-  }
+  };
+  for (const box of walk.obstacles) block(box);
+  if (walls) for (const box of walls) block(box);
   return coord;
 }
 
@@ -2944,6 +2976,8 @@ function walkSlide(x, z, delta, walk, axis, eyeY) {
  * a time so a diagonal run slides instead of sticking, and the slab bounds are
  * clamped after the walls so a walker can never fall off. Height is a smoothed
  * snap to the surface underfoot, so a raised plate lifts the eye without a pop.
+ * A surface more than walk.step above the ground underfoot stops being a step
+ * and becomes a wall, so only a low rise is climbed and a taller face blocks.
  * Pure: the passed state is never mutated, a new state is returned.
  */
 export function walkStep(state, input, dt, walk) {
@@ -2955,6 +2989,23 @@ export function walkStep(state, input, dt, walk) {
   let x = state.x;
   let z = state.z;
   let y = state.y;
+
+  // The ground the walker stands on decides what counts as a step. Fall back to
+  // the smoothed foot height when off every surface, so a walker already in the
+  // air keeps the same rule.
+  const stand = walkGroundY(walk, x, z);
+  const footBase = stand !== null ? stand : y - walk.eye;
+  const reach = footBase + (Number.isFinite(walk.step) ? walk.step : WALK_STEP);
+  let walls = null;
+  for (const surface of walk.surfaces) {
+    if (surface.y <= reach) continue;
+    const fp = surface.footprint;
+    (walls || (walls = [])).push({
+      id: surface.id,
+      min: [fp.minX, -1000, fp.minZ],
+      max: [fp.maxX, surface.y, fp.maxZ],
+    });
+  }
 
   // The same facing basis the camera look uses, so W always walks where the
   // crosshair points.
@@ -2981,8 +3032,8 @@ export function walkStep(state, input, dt, walk) {
   const substeps = Math.max(1, Math.ceil(distance / (walk.radius * 0.9)));
   const sub = step / substeps;
   for (let index = 0; index < substeps; index += 1) {
-    x = walkSlide(x, z, vx * sub, walk, 0, y);
-    z = walkSlide(x, z, vz * sub, walk, 1, y);
+    x = walkSlide(x, z, vx * sub, walk, 0, y, walls);
+    z = walkSlide(x, z, vz * sub, walk, 1, y, walls);
   }
 
   const bounds = walk.bounds;

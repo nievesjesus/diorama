@@ -54,11 +54,18 @@ import {
   validateNetwork,
   walkGroundY,
   walkStep,
+  walkBobOffset,
+  walkBobPhase,
+  WALK_BOB_CYCLE,
+  WALK_BOB_RUN,
+  WALK_BOB_WALK,
   WALK_EYE,
   WALK_FOOT_CLEAR,
   WALK_RADIUS,
   WALK_RUN,
+  WALK_RUN_FOV,
   WALK_SPEED,
+  WALK_STEP,
 } from './scene3d.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -1430,6 +1437,7 @@ function flatWalk(obstacles = []) {
     radius: WALK_RADIUS,
     eye: WALK_EYE,
     footClear: WALK_FOOT_CLEAR,
+    step: WALK_STEP,
     bounds: { minX: -10, maxX: 10, minZ: -10, maxZ: 10 },
     surfaces: [{ id: 'slab', y: 0, footprint: { minX: -10, maxX: 10, minZ: -10, maxZ: 10 } }],
     obstacles,
@@ -1541,5 +1549,78 @@ test('walkStep clamps to the slab and never falls off', () => {
   let north = { x: 0, z: 9.9, y: WALK_EYE, yaw: Math.PI }; // facing +z
   for (let step = 0; step < 60; step += 1) north = walkStep(north, { forward: 1, run: true }, 1 / 30, walk);
   assert.equal(north.z, 10 - WALK_RADIUS);
+});
+
+// ------------------------------------------------------------ step-up
+
+test('planWalk publishes the step height a walker may climb', () => {
+  assert.equal(WALK_STEP, 0.7);
+  assert.equal(planWalk(walkModel).step, WALK_STEP);
+});
+
+test('walkStep steps up onto a plate within WALK_STEP', () => {
+  const walk = flatWalk();
+  walk.surfaces.unshift({ id: 'step', y: 0.6, footprint: { minX: 1, maxX: 9, minZ: -3, maxZ: 3 } });
+  let walker = { x: 0.5, z: 0, y: WALK_EYE, yaw: -Math.PI / 2 }; // facing +x
+  for (let step = 0; step < 120; step += 1) walker = walkStep(walker, { forward: 1 }, 1 / 60, walk);
+  assert.ok(walker.x > 1 && walker.x < 9, `walked onto the plate, x was ${walker.x}`);
+  assert.ok(Math.abs(walker.y - (0.6 + WALK_EYE)) < 1e-2, `eye was ${walker.y}`);
+});
+
+test('walkStep refuses a face taller than WALK_STEP', () => {
+  const walk = flatWalk();
+  // A 1.2 face is a wall, not a step: it blocks at its inflated edge and the
+  // eye never leaves the slab.
+  walk.surfaces.unshift({ id: 'wall', y: 1.2, footprint: { minX: 1, maxX: 3, minZ: -3, maxZ: 3 } });
+  let walker = { x: 0.5, z: 0, y: WALK_EYE, yaw: -Math.PI / 2 }; // facing +x
+  for (let step = 0; step < 120; step += 1) walker = walkStep(walker, { forward: 1, run: true }, 1 / 60, walk);
+  assert.ok(walker.x <= 1 - WALK_RADIUS + 1e-6, `blocked at ${walker.x}`);
+  assert.ok(walker.x > 1 - WALK_RADIUS - 1e-3, 'the walker should reach the face');
+  assert.ok(Math.abs(walker.y - WALK_EYE) < 1e-3, `eye stayed on the slab, was ${walker.y}`);
+});
+
+test('walkStep steps off an edge and drops smoothly to the deck', () => {
+  const walk = flatWalk();
+  walk.surfaces.unshift({ id: 'step', y: 0.6, footprint: { minX: -3, maxX: -1, minZ: -3, maxZ: 3 } });
+  let walker = { x: -2, z: 0, y: 0.6 + WALK_EYE, yaw: -Math.PI / 2 }; // facing +x, off the east edge
+  let last = walker.y;
+  let monotone = true;
+  for (let step = 0; step < 120; step += 1) {
+    walker = walkStep(walker, { forward: 1 }, 1 / 60, walk);
+    if (walker.y > last + 1e-9) monotone = false;
+    last = walker.y;
+  }
+  assert.ok(walker.x > -1, `stepped off the plate, x was ${walker.x}`);
+  assert.ok(monotone, 'the descent never pops back up');
+  assert.ok(Math.abs(walker.y - WALK_EYE) < 1e-2, `dropped to the deck, was ${walker.y}`);
+});
+
+test('walkStep keeps the slab clamp even after a step up', () => {
+  const walk = flatWalk();
+  // A step that overshoots the west slab edge: the walker climbs it but is
+  // still held inside the slab bounds.
+  walk.surfaces.unshift({ id: 'ledge', y: 0.5, footprint: { minX: -12, maxX: -4, minZ: -3, maxZ: 3 } });
+  let walker = { x: -8, z: 0, y: WALK_EYE, yaw: Math.PI / 2 }; // facing -x
+  for (let step = 0; step < 200; step += 1) walker = walkStep(walker, { forward: 1, run: true }, 1 / 30, walk);
+  assert.equal(walker.x, -10 + WALK_RADIUS, 'clamped inside the slab');
+  assert.ok(Math.abs(walker.y - (0.5 + WALK_EYE)) < 1e-3, `still on the ledge, was ${walker.y}`);
+});
+
+// ------------------------------------------------------------ head-bob
+
+test('walkBobOffset is exactly zero at rest and scales with gait', () => {
+  assert.equal(walkBobOffset(0, false), 0);
+  assert.equal(walkBobOffset(0, true), 0);
+  assert.ok(Math.abs(walkBobOffset(Math.PI / 2, false) - WALK_BOB_WALK) < 1e-12);
+  assert.ok(Math.abs(walkBobOffset(Math.PI / 2, true) - WALK_BOB_RUN) < 1e-12);
+  assert.equal(WALK_RUN_FOV, 3.5);
+});
+
+test('walkBobPhase advances by distance walked, never wall-clock', () => {
+  // No distance, no phase change: a frozen frame cannot bob.
+  assert.equal(walkBobPhase(0, 0), 0);
+  assert.equal(walkBobPhase(1.234, 0), 1.234);
+  // One full cycle per WALK_BOB_CYCLE units.
+  assert.ok(Math.abs(walkBobPhase(0, WALK_BOB_CYCLE) - Math.PI * 2) < 1e-12);
 });
 
