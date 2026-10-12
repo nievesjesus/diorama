@@ -1,0 +1,429 @@
+{
+  "version": 1,
+  "title": "REA - Reverse Engineer Anything",
+  "subtitle": "Agent to MCP server to deep-analysis providers to the target artifact",
+  "theme": "dark",
+  "size": [
+    1280,
+    960
+  ],
+  "hint": "Hover a part to trace the analysis path",
+  "parts": [
+    {
+      "id": "ground",
+      "kind": "plate",
+      "at": [
+        -3,
+        -18.27,
+        0
+      ],
+      "size": [
+        49,
+        25.53,
+        0.4
+      ],
+      "color": "slate",
+      "detail": "concrete"
+    },
+    {
+      "id": "tier-1",
+      "kind": "plate",
+      "at": [
+        -1.2,
+        -8.21,
+        0.4
+      ],
+      "size": [
+        13.4,
+        10.91,
+        0.3
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "tier-2",
+      "kind": "plate",
+      "at": [
+        14.8,
+        -5.45,
+        0.4
+      ],
+      "size": [
+        13.4,
+        5.4,
+        0.3
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "tier-3",
+      "kind": "plate",
+      "at": [
+        30.8,
+        -16.47,
+        0.4
+      ],
+      "size": [
+        5.4,
+        21.93,
+        0.3
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "tier-4",
+      "kind": "plate",
+      "at": [
+        38.8,
+        -16.47,
+        0.4
+      ],
+      "size": [
+        5.4,
+        16.42,
+        0.3
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "agent",
+      "kind": "box",
+      "label": "Agent",
+      "at": [
+        0,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        3.6
+      ],
+      "color": "blue",
+      "detail": "tower",
+      "accent": true
+    },
+    {
+      "id": "mcp",
+      "kind": "box",
+      "label": "MCP server",
+      "at": [
+        8,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.6
+      ],
+      "color": "steel",
+      "vents": true
+    },
+    {
+      "id": "cli",
+      "kind": "box",
+      "label": "CLI",
+      "at": [
+        8,
+        -7.01,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "cloud"
+    },
+    {
+      "id": "workflows",
+      "kind": "box",
+      "label": "Workflows",
+      "at": [
+        16,
+        -4.25,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        3.2
+      ],
+      "color": "green",
+      "detail": "rack"
+    },
+    {
+      "id": "sandbox",
+      "kind": "box",
+      "label": "Sandbox",
+      "at": [
+        24,
+        -4.25,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "hopper",
+      "kind": "box",
+      "label": "Hopper",
+      "at": [
+        32,
+        -4.25,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "amber"
+    },
+    {
+      "id": "ghidra",
+      "kind": "box",
+      "label": "Ghidra",
+      "at": [
+        32,
+        -9.76,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "copper"
+    },
+    {
+      "id": "ida",
+      "kind": "box",
+      "label": "IDA",
+      "at": [
+        32,
+        1.26,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "plum"
+    },
+    {
+      "id": "browser",
+      "kind": "box",
+      "label": "Browser/CDP",
+      "at": [
+        32,
+        -15.27,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "sand"
+    },
+    {
+      "id": "native",
+      "kind": "cylinder",
+      "label": "Native binary",
+      "at": [
+        41.5,
+        -2.75,
+        0.7
+      ],
+      "radius": 1.5,
+      "h": 2.6,
+      "axis": "z",
+      "color": "brick"
+    },
+    {
+      "id": "javascript",
+      "kind": "box",
+      "label": "JS / Electron",
+      "at": [
+        40,
+        -15.27,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "cloud"
+    }
+  ],
+  "links": [
+    {
+      "from": "agent",
+      "to": "mcp",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "blue"
+    },
+    {
+      "from": "agent",
+      "to": "cli",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "mcp",
+      "to": "workflows",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "steel"
+    },
+    {
+      "from": "cli",
+      "to": "workflows",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "slate"
+    },
+    {
+      "from": "workflows",
+      "to": "sandbox",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "green"
+    },
+    {
+      "from": "sandbox",
+      "to": "hopper",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "amber"
+    },
+    {
+      "from": "sandbox",
+      "to": "ghidra",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "copper"
+    },
+    {
+      "from": "sandbox",
+      "to": "ida",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "plum"
+    },
+    {
+      "from": "sandbox",
+      "to": "browser",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "sand"
+    },
+    {
+      "from": "hopper",
+      "to": "native",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "amber"
+    },
+    {
+      "from": "ghidra",
+      "to": "native",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "copper"
+    },
+    {
+      "from": "ida",
+      "to": "native",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "plum"
+    },
+    {
+      "from": "browser",
+      "to": "javascript",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "sand"
+    }
+  ],
+  "flows": [
+    {
+      "path": [
+        "agent",
+        "mcp",
+        "workflows",
+        "sandbox",
+        "hopper",
+        "native"
+      ],
+      "kind": "request",
+      "color": "amber",
+      "speed": 10,
+      "count": 3
+    },
+    {
+      "path": [
+        "agent",
+        "cli",
+        "workflows",
+        "sandbox",
+        "browser",
+        "javascript"
+      ],
+      "kind": "packet",
+      "color": "sand",
+      "speed": 9,
+      "count": 3
+    },
+    {
+      "path": [
+        "workflows",
+        "sandbox",
+        "ida",
+        "native"
+      ],
+      "kind": "job",
+      "color": "plum",
+      "speed": 8,
+      "count": 2
+    }
+  ],
+  "readout": [
+    {
+      "label": "Stars",
+      "value": "101,506"
+    },
+    {
+      "label": "Version",
+      "value": "6.4.0"
+    },
+    {
+      "label": "Targets",
+      "value": "16"
+    }
+  ]
+}

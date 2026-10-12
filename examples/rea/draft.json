@@ -1,0 +1,48 @@
+{
+  "title": "REA - Reverse Engineer Anything",
+  "subtitle": "Agent to MCP server to deep-analysis providers to the target artifact",
+  "hint": "Hover a part to trace the analysis path",
+  "theme": "dark",
+  "size": [1280, 960],
+  "readout": [
+    { "label": "Stars", "value": "101,506" },
+    { "label": "Version", "value": "6.4.0" },
+    { "label": "Targets", "value": "16" }
+  ],
+  "parts": [
+    { "id": "agent", "label": "Agent", "kind": "tower", "tier": "entry", "color": "blue", "accent": true },
+    { "id": "mcp", "label": "MCP server", "kind": "server", "tier": "entry", "color": "steel" },
+    { "id": "cli", "label": "CLI", "kind": "box", "tier": "entry", "color": "cloud" },
+
+    { "id": "workflows", "label": "Workflows", "kind": "rack", "tier": "core", "color": "green" },
+    { "id": "sandbox", "label": "Sandbox", "kind": "box", "tier": "core", "color": "slate" },
+
+    { "id": "hopper", "label": "Hopper", "kind": "box", "tier": "providers", "color": "amber" },
+    { "id": "ghidra", "label": "Ghidra", "kind": "box", "tier": "providers", "color": "copper" },
+    { "id": "ida", "label": "IDA", "kind": "box", "tier": "providers", "color": "plum" },
+    { "id": "browser", "label": "Browser/CDP", "kind": "box", "tier": "providers", "color": "sand" },
+
+    { "id": "native", "label": "Native binary", "kind": "cylinder", "tier": "targets", "color": "brick" },
+    { "id": "javascript", "label": "JS / Electron", "kind": "box", "tier": "targets", "color": "cloud" }
+  ],
+  "links": [
+    { "id": "mcp-call", "from": "agent", "to": "mcp", "kind": "tube", "color": "blue" },
+    { "id": "setup", "from": "agent", "to": "cli", "kind": "cable", "color": "slate" },
+    { "id": "toolcall", "from": "mcp", "to": "workflows", "kind": "tube", "color": "steel" },
+    { "id": "cmd", "from": "cli", "to": "workflows", "kind": "cable", "color": "slate" },
+    { "id": "spawn", "from": "workflows", "to": "sandbox", "kind": "tube", "color": "green" },
+    { "id": "hop", "from": "sandbox", "to": "hopper", "kind": "tube", "color": "amber" },
+    { "id": "ghidra", "from": "sandbox", "to": "ghidra", "kind": "tube", "color": "copper" },
+    { "id": "ida", "from": "sandbox", "to": "ida", "kind": "tube", "color": "plum" },
+    { "id": "web", "from": "sandbox", "to": "browser", "kind": "cable", "color": "sand" },
+    { "id": "hop-out", "from": "hopper", "to": "native", "kind": "tube", "color": "amber" },
+    { "id": "ghidra-out", "from": "ghidra", "to": "native", "kind": "tube", "color": "copper" },
+    { "id": "ida-out", "from": "ida", "to": "native", "kind": "tube", "color": "plum" },
+    { "id": "browser-out", "from": "browser", "to": "javascript", "kind": "cable", "color": "sand" }
+  ],
+  "flows": [
+    { "path": ["agent", "mcp", "workflows", "sandbox", "hopper", "native"], "kind": "request", "color": "amber", "speed": 10, "count": 3 },
+    { "path": ["agent", "cli", "workflows", "sandbox", "browser", "javascript"], "kind": "packet", "color": "sand", "speed": 9, "count": 3 },
+    { "path": ["workflows", "sandbox", "ida", "native"], "kind": "job", "color": "plum", "speed": 8, "count": 2 }
+  ]
+}

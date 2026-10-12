@@ -1,0 +1,47 @@
+{
+  "title": "universal-modder",
+  "subtitle": "Point an AI agent at any PC game: recon, reverse engineer, make art with fal, test in-game, ship the mod",
+  "hint": "The mod-any-game loop",
+  "theme": "light",
+  "size": [1400, 1000],
+  "readout": [
+    { "label": "Stars", "value": "6,644" },
+    { "label": "Skills", "value": "11" },
+    { "label": "Engine playbooks", "value": "12" }
+  ],
+  "parts": [
+    { "id": "agent", "label": "AI agent", "kind": "tower", "tier": "recon", "color": "blue", "accent": true },
+    { "id": "scan", "label": "um scan", "kind": "server", "tier": "recon", "color": "slate" },
+    { "id": "recon", "label": "game-recon", "kind": "box", "tier": "recon", "color": "steel" },
+    { "id": "kb", "label": "knowledge base", "kind": "database", "tier": "recon", "color": "amber" },
+
+    { "id": "re", "label": "reverse eng", "kind": "box", "tier": "build", "color": "plum" },
+    { "id": "engines", "label": "engine playbooks", "kind": "rack", "tier": "build", "color": "slate" },
+    { "id": "fal", "label": "fal assets", "kind": "box", "tier": "build", "color": "brick" },
+    { "id": "sprite", "label": "asset pipeline", "kind": "box", "tier": "build", "color": "green" },
+
+    { "id": "test", "label": "in-game test", "kind": "box", "tier": "verify", "color": "copper" },
+    { "id": "video", "label": "showcase video", "kind": "box", "tier": "verify", "color": "plum" },
+
+    { "id": "publish", "label": "publish-mod", "kind": "box", "tier": "ship", "color": "copper" },
+    { "id": "notes", "label": "field notes", "kind": "crate", "tier": "ship", "color": "sand" }
+  ],
+  "links": [
+    { "id": "l_scan", "from": "agent", "to": "scan", "kind": "cable", "color": "blue", "label": "scan" },
+    { "id": "l_recon", "from": "scan", "to": "recon", "kind": "cable", "color": "slate", "label": "fingerprint" },
+    { "id": "l_kb", "from": "recon", "to": "kb", "kind": "cable", "color": "amber", "label": "prior art" },
+    { "id": "l_re", "from": "recon", "to": "re", "kind": "tube", "color": "slate", "label": "read code" },
+    { "id": "l_eng", "from": "re", "to": "engines", "kind": "tube", "color": "slate", "label": "route" },
+    { "id": "l_fal", "from": "engines", "to": "fal", "kind": "cable", "color": "brick", "label": "assets" },
+    { "id": "l_sprite", "from": "fal", "to": "sprite", "kind": "cable", "color": "green", "label": "frames" },
+    { "id": "l_test", "from": "sprite", "to": "test", "kind": "tube", "color": "copper", "label": "in-game" },
+    { "id": "l_pub", "from": "test", "to": "publish", "kind": "tube", "color": "copper", "label": "package" },
+    { "id": "l_video", "from": "test", "to": "video", "kind": "cable", "color": "plum", "label": "record" },
+    { "id": "l_notes", "from": "publish", "to": "notes", "kind": "cable", "color": "sand", "label": "field note" }
+  ],
+  "flows": [
+    { "path": ["agent", "scan", "recon", "re", "engines", "fal", "sprite", "test", "publish"], "kind": "job", "color": "blue", "speed": 12, "count": 3 },
+    { "path": ["test", "video"], "kind": "packet", "color": "plum", "speed": 10, "count": 2 },
+    { "path": ["publish", "notes"], "kind": "packet", "color": "sand", "speed": 8, "count": 2 }
+  ]
+}

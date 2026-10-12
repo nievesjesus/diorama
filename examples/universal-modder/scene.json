@@ -1,0 +1,438 @@
+{
+  "version": 1,
+  "title": "universal-modder",
+  "subtitle": "Point an AI agent at any PC game: recon, reverse engineer, make art with fal, test in-game, ship the mod",
+  "theme": "light",
+  "size": [
+    1400,
+    1000
+  ],
+  "hint": "The mod-any-game loop",
+  "parts": [
+    {
+      "id": "ground",
+      "kind": "plate",
+      "at": [
+        -3,
+        -8.11,
+        0
+      ],
+      "size": [
+        97,
+        12.61,
+        0.4
+      ],
+      "color": "paper",
+      "detail": "concrete"
+    },
+    {
+      "id": "tier-1",
+      "kind": "plate",
+      "at": [
+        -1.2,
+        -6.31,
+        0.4
+      ],
+      "size": [
+        29.4,
+        9.01,
+        0.3
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "tier-2",
+      "kind": "plate",
+      "at": [
+        30.8,
+        -2.7,
+        0.4
+      ],
+      "size": [
+        29.4,
+        5.4,
+        0.3
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "tier-3",
+      "kind": "plate",
+      "at": [
+        62.8,
+        -6.31,
+        0.4
+      ],
+      "size": [
+        13.4,
+        9.01,
+        0.3
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "tier-4",
+      "kind": "plate",
+      "at": [
+        78.8,
+        -2.7,
+        0.4
+      ],
+      "size": [
+        13.4,
+        5.4,
+        0.3
+      ],
+      "color": "slate"
+    },
+    {
+      "id": "agent",
+      "kind": "box",
+      "label": "AI agent",
+      "at": [
+        0,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        3.6
+      ],
+      "color": "blue",
+      "detail": "tower",
+      "accent": true
+    },
+    {
+      "id": "scan",
+      "kind": "box",
+      "label": "um scan",
+      "at": [
+        8,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.6
+      ],
+      "color": "slate",
+      "vents": true
+    },
+    {
+      "id": "recon",
+      "kind": "box",
+      "label": "game-recon",
+      "at": [
+        16,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "steel"
+    },
+    {
+      "id": "kb",
+      "kind": "cylinder",
+      "label": "knowledge base",
+      "at": [
+        25.5,
+        -3.61,
+        0.7
+      ],
+      "radius": 1.5,
+      "h": 2.8,
+      "axis": "z",
+      "color": "amber"
+    },
+    {
+      "id": "re",
+      "kind": "box",
+      "label": "reverse eng",
+      "at": [
+        32,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "plum"
+    },
+    {
+      "id": "engines",
+      "kind": "box",
+      "label": "engine playbooks",
+      "at": [
+        40,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        3.2
+      ],
+      "color": "slate",
+      "detail": "rack"
+    },
+    {
+      "id": "fal",
+      "kind": "box",
+      "label": "fal assets",
+      "at": [
+        48,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "brick"
+    },
+    {
+      "id": "sprite",
+      "kind": "box",
+      "label": "asset pipeline",
+      "at": [
+        56,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "green"
+    },
+    {
+      "id": "test",
+      "kind": "box",
+      "label": "in-game test",
+      "at": [
+        64,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "copper"
+    },
+    {
+      "id": "video",
+      "kind": "box",
+      "label": "showcase video",
+      "at": [
+        72,
+        -5.11,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "plum"
+    },
+    {
+      "id": "publish",
+      "kind": "box",
+      "label": "publish-mod",
+      "at": [
+        80,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        2.2
+      ],
+      "color": "copper"
+    },
+    {
+      "id": "notes",
+      "kind": "box",
+      "label": "field notes",
+      "at": [
+        88,
+        -1.5,
+        0.7
+      ],
+      "size": [
+        3,
+        3,
+        1.6
+      ],
+      "color": "sand",
+      "detail": "crate"
+    }
+  ],
+  "links": [
+    {
+      "from": "agent",
+      "to": "scan",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "blue",
+      "label": "scan"
+    },
+    {
+      "from": "scan",
+      "to": "recon",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "slate",
+      "label": "fingerprint"
+    },
+    {
+      "from": "recon",
+      "to": "kb",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "amber",
+      "label": "prior art"
+    },
+    {
+      "from": "recon",
+      "to": "re",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "slate",
+      "label": "read code"
+    },
+    {
+      "from": "re",
+      "to": "engines",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "slate",
+      "label": "route"
+    },
+    {
+      "from": "engines",
+      "to": "fal",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "brick",
+      "label": "assets"
+    },
+    {
+      "from": "fal",
+      "to": "sprite",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "green",
+      "label": "frames"
+    },
+    {
+      "from": "sprite",
+      "to": "test",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "copper",
+      "label": "in-game"
+    },
+    {
+      "from": "test",
+      "to": "publish",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "tube",
+      "color": "copper",
+      "label": "package"
+    },
+    {
+      "from": "test",
+      "to": "video",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "plum",
+      "label": "record"
+    },
+    {
+      "from": "publish",
+      "to": "notes",
+      "fromPort": "east",
+      "toPort": "west",
+      "kind": "cable",
+      "color": "sand",
+      "label": "field note"
+    }
+  ],
+  "flows": [
+    {
+      "path": [
+        "agent",
+        "scan",
+        "recon",
+        "re",
+        "engines",
+        "fal",
+        "sprite",
+        "test",
+        "publish"
+      ],
+      "kind": "job",
+      "color": "blue",
+      "speed": 12,
+      "count": 3
+    },
+    {
+      "path": [
+        "test",
+        "video"
+      ],
+      "kind": "packet",
+      "color": "plum",
+      "speed": 10,
+      "count": 2
+    },
+    {
+      "path": [
+        "publish",
+        "notes"
+      ],
+      "kind": "packet",
+      "color": "sand",
+      "speed": 8,
+      "count": 2
+    }
+  ],
+  "readout": [
+    {
+      "label": "Stars",
+      "value": "6,644"
+    },
+    {
+      "label": "Skills",
+      "value": "11"
+    },
+    {
+      "label": "Engine playbooks",
+      "value": "12"
+    }
+  ]
+}
