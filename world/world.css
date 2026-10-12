@@ -44,10 +44,165 @@ body.world-page .hint {
   max-width: 48ch;
 }
 
-body.world-page .hud {
+/* The HUD dock: the radar disc and the first-person toggle, stacked bottom-right
+   above the hint line. The dock itself is transparent to the pointer; only the
+   button takes events, so the radar never swallows an orbit drag. */
+.world-hud-dock {
+  position: absolute;
+  right: 22px;
+  bottom: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
   pointer-events: none;
 }
 
-body.world-page .hud a {
+/* The GTA-style radar: a circular glass instrument. The lower canvas is a live
+   top-down WebGL render of the diorama; the upper one draws the ticks, the
+   north marker and the fixed arrow. The round border clips both. */
+.world-radar {
+  position: relative;
+  width: 176px;
+  height: 176px;
+  border: 1px solid var(--hud-border);
+  border-radius: 50%;
+  background: var(--hud-bg);
+  box-shadow: 0 10px 30px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  overflow: hidden;
+}
+
+/* Shown in first person (or when ?map=1 pins it); hidden in orbit by default.
+   Lite clients skip the whole disc. */
+.world-radar[hidden] {
+  display: none;
+}
+
+.world-radar-canvas,
+.world-radar-instrument {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* A radar screen is punchier than the hero shot: lift the saturation and
+   contrast of the live render so roofs and roads read at a glance, and lay a
+   soft vignette under the ring. */
+.world-radar-canvas {
+  filter: saturate(1.3) contrast(1.22) brightness(1.03);
+}
+
+.world-radar-instrument {
+  pointer-events: none;
+}
+
+/* The first-person toggle: HUD glass, small and reachable, never over the map. */
+.world-fp-toggle {
+  appearance: none;
+  padding: 7px 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  color: var(--hud-ink);
+  font-family: var(--iso-font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
   pointer-events: auto;
+}
+
+.world-fp-toggle:hover {
+  border-color: var(--hud-ink);
+}
+
+.world-fp-toggle:focus-visible {
+  outline: 2px solid var(--hud-ink);
+  outline-offset: 2px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .world-radar,
+  .world-fp-toggle,
+  .world-dest-chip,
+  .world-near {
+    background: var(--hud-bg-solid);
+  }
+}
+
+/* The destination readout: a small glass chip in the dock, under the toggle,
+   showing the straight-line distance to the waypoint in whole metres. */
+.world-dest-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  color: var(--hud-ink);
+  font-family: var(--iso-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.world-dest-chip[hidden] {
+  display: none;
+}
+
+/* The near line: in first person, the nearest named part in reach. It sits
+   centred above the hint, clear of the dock on the right and the readout on
+   the left. Its opacity is set from the live distance, so there is no CSS
+   transition to make a frozen capture non-deterministic. */
+.world-near {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  max-width: min(420px, 60vw);
+  padding: 5px 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  background: var(--hud-bg);
+  box-shadow: 0 8px 22px var(--hud-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+  color: var(--hud-ink);
+  font-family: var(--iso-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.world-near[hidden] {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .world-hud-dock {
+    right: 14px;
+    /* Clear of the mobile hint line, which iso.css lifts to bottom: 74px. */
+    bottom: 118px;
+  }
+
+  .world-near {
+    bottom: 104px;
+    max-width: 76vw;
+  }
 }

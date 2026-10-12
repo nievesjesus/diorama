@@ -528,8 +528,12 @@ export function routeCandidates(ax, az, bx, bz) {
   return candidates;
 }
 
-/** Pick the first candidate route that clears every obstacle. */
-export function planRoute(ax, az, bx, bz, obstacles, margin) {
+/**
+ * Pick the first candidate cable route that clears every obstacle. This is the
+ * cable-tray planner, not the walk router: see `planRoute` further down for the
+ * walkable-deck waypoint path.
+ */
+export function planCableRoute(ax, az, bx, bz, obstacles, margin) {
   const candidates = routeCandidates(ax, az, bx, bz);
   for (const nodes of candidates) {
     if (world_pathClears(nodes, obstacles, margin)) return nodes;
@@ -2936,6 +2940,116 @@ export function planWalk(model) {
   };
 }
 
+// ------------------------------------------------------------------- radar
+
+/**
+ * Plan the HUD radar from a built model. Pure: same model, same framing.
+ *
+ * The radar itself is a live top-down GL render of the diorama (runtime.mjs);
+ * what lives here is the math it draws against, so a `?t=` capture of a still
+ * pose is a function of the model and the pose alone. planMinimap reports the
+ * slab fit once - its centre, its bounds, and a scale that puts the longer side
+ * on the unit box - and radarFraming turns one pose into the ortho frame the
+ * renderer uses: where the eye stands, how much ground it takes in, and which
+ * world direction reads as "up" on screen.
+ */
+
+// How far the first-person radar reaches from the walker, in world units to the
+// rim. GTA-local: a window around the player, not the whole slab.
+export const RADAR_FP_RADIUS = 15;
+// The orbit radar fits the whole slab plus this much slack, so a corner never
+// lands on the rim.
+export const RADAR_ORBIT_MARGIN = 1.12;
+
+export function planMinimap(model) {
+  if (!model || typeof model !== 'object' || !model.slab) {
+    throw new Error('planMinimap requires a built world model');
+  }
+  const slab = model.slab.footprint;
+  // The slab's longer side is what the map fits; a square disc then has slack on
+  // the short axis, which keeps a corner off the rim.
+  const spanX = world_round(slab.maxX - slab.minX);
+  const spanZ = world_round(slab.maxZ - slab.minZ);
+  const span = Math.max(spanX, spanZ, 1e-3);
+  const center = [
+    world_round((slab.minX + slab.maxX) / 2),
+    world_round((slab.minZ + slab.maxZ) / 2),
+  ];
+  const scale = world_round(1 / span);
+  const bounds = {
+    minX: world_round(slab.minX),
+    maxX: world_round(slab.maxX),
+    minZ: world_round(slab.minZ),
+    maxZ: world_round(slab.maxZ),
+  };
+  return {
+    version: 2,
+    mode: model.env ? model.env.mode : null,
+    center,
+    scale,
+    span,
+    bounds,
+    slab: { ...bounds },
+  };
+}
+
+// A frame from radarFraming: a world centre, a half-extent in world units (the
+// ortho box spans [-half, half] on both axes) and the world direction that reads
+// as screen-up. In first person that up is the walker's forward, so the map
+// turns under a fixed arrow; in orbit it is north (-z), so the slab sits
+// north-up. Pure.
+export function radarFraming(map, view) {
+  if (!map || !Array.isArray(map.center)) {
+    throw new Error('radarFraming requires a minimap plan');
+  }
+  const clean = (value) => {
+    const rounded = world_round(value);
+    return rounded === 0 ? 0 : rounded;
+  };
+  if (view && view.mode === 'fp') {
+    const yaw = Number.isFinite(view.yaw) ? view.yaw : 0;
+    const x = Number.isFinite(view.x) ? view.x : map.center[0];
+    const z = Number.isFinite(view.z) ? view.z : map.center[1];
+    return {
+      mode: 'fp',
+      center: [clean(x), clean(z)],
+      half: RADAR_FP_RADIUS,
+      // The walker's forward on the deck: (-sin yaw, -cos yaw).
+      up: [clean(-Math.sin(yaw)), clean(-Math.cos(yaw))],
+    };
+  }
+  return {
+    mode: 'orbit',
+    center: [map.center[0], map.center[1]],
+    half: clean(Math.max(map.span / 2, RADAR_FP_RADIUS) * RADAR_ORBIT_MARGIN),
+    up: [0, -1],
+  };
+}
+
+/**
+ * A world point in the frame's screen units: +x is screen right, +y is screen
+ * up, and the rim of the ortho box sits at +/-1. Pure, so the runtime's ring,
+ * north marker and camera wedge all share one projection.
+ */
+export function radarProject(frame, x, z) {
+  if (!frame || !Array.isArray(frame.center) || !Array.isArray(frame.up)) {
+    throw new Error('radarProject requires a radar frame');
+  }
+  const [ux, uz] = frame.up;
+  // Screen-right is the up vector turned ninety degrees on the deck.
+  const rx = -uz;
+  const rz = ux;
+  const half = frame.half || 1;
+  const dx = x - frame.center[0];
+  const dz = z - frame.center[1];
+  // Normalize -0 away so a capture diff sees a clean zero at dead centre.
+  const clean = (value) => (value === 0 ? 0 : value);
+  return {
+    x: clean((dx * rx + dz * rz) / half),
+    y: clean((dx * ux + dz * uz) / half),
+  };
+}
+
 // Slide the walker along one axis. Moving into a face stops that axis at the
 // face and leaves the other axis free, which is what makes a diagonal run slide
 // along a wall instead of sticking to it. Obstacles are expanded by the walker
@@ -3045,6 +3159,303 @@ export function walkStep(state, input, dt, walk) {
     y += (ground + walk.eye - y) * (1 - Math.exp(-WALK_SMOOTH * step));
   }
   return { x, z, y, yaw };
+}
+
+// ------------------------------------------------------------------ waypoint
+//
+// The GTA waypoint layer: a pure shortest path across the walkable deck, so the
+// runtime only ever draws a polyline it was handed and a frozen capture of a
+// route is a function of the walk table and its two endpoints alone.
+//
+// The deck is sampled on a plan-view lattice. A cell is standable when the
+// walker could stand at its centre - on some surface, clear of every solid
+// grown by the walker's radius - and two neighbouring cells are joined only
+// when the rise between them is a legal step AND the straight line between
+// their centres clears every solid that blocks at either height. Climbing is
+// therefore possible up to WALK_STEP and never up a building, which is exactly
+// the "slab plus reachable plates" the walker can actually visit. Snapping
+// drops a query onto the nearest standable cell, so double-clicking a machine
+// lands the waypoint on the ground beside it, never inside its footprint.
+
+// Lattice cell size in world units. One unit keeps the grid aligned with the
+// slab's rounded footprints and stays well under the walker's stride.
+export const ROUTE_GRID = 1;
+
+// Neighbour directions, in a fixed order so A* expands ties identically on
+// every machine. The four orthogonal first, then the four diagonals.
+const ROUTE_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+// A solid blocks the walker at a given foot height by the same vertical rule
+// walkSlide uses: too low to matter, or entirely overhead, is not a wall.
+function routeBlocksAt(box, ground, walk) {
+  const clear = Number.isFinite(walk.footClear) ? walk.footClear : WALK_FOOT_CLEAR;
+  const eye = Number.isFinite(walk.eye) ? walk.eye : WALK_EYE;
+  if (box.max[1] <= ground + clear) return false;
+  if (box.min[1] >= ground + eye) return false;
+  return true;
+}
+
+// The walk table a query runs on: the caller's plan, or - when only a model is
+// handed in - a fresh planWalk of it. Keeps planRoute usable either way.
+function routeTable(walk, model) {
+  if (walk && Array.isArray(walk.surfaces) && walk.surfaces.length) return walk;
+  if (model) return planWalk(model);
+  throw new Error('planRoute requires a walk table or a built world model');
+}
+
+// A min-heap ordered by (f, h, cell.index): the integer tie-break that makes two
+// identical queries agree to the byte. No locale compare anywhere.
+class RouteHeap {
+  constructor() {
+    this.items = [];
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  // Negative means a sorts first.
+  static compare(a, b) {
+    if (a.f !== b.f) return a.f - b.f;
+    if (a.h !== b.h) return a.h - b.h;
+    return a.cell.index - b.cell.index;
+  }
+
+  push(item) {
+    const items = this.items;
+    items.push(item);
+    let index = items.length - 1;
+    while (index > 0) {
+      const parent = (index - 1) >> 1;
+      if (RouteHeap.compare(items[index], items[parent]) >= 0) break;
+      const swap = items[index];
+      items[index] = items[parent];
+      items[parent] = swap;
+      index = parent;
+    }
+  }
+
+  pop() {
+    const items = this.items;
+    const top = items[0];
+    const last = items.pop();
+    if (items.length && last !== undefined) {
+      items[0] = last;
+      let index = 0;
+      for (;;) {
+        const left = index * 2 + 1;
+        const right = left + 1;
+        let smallest = index;
+        if (left < items.length && RouteHeap.compare(items[left], items[smallest]) < 0) smallest = left;
+        if (right < items.length && RouteHeap.compare(items[right], items[smallest]) < 0) smallest = right;
+        if (smallest === index) break;
+        const swap = items[index];
+        items[index] = items[smallest];
+        items[smallest] = swap;
+        index = smallest;
+      }
+    }
+    return top;
+  }
+}
+
+// The lattice over a walk table: every standable cell keyed "i,j", plus the
+// step it was built against. Built once per query; pure.
+function routeGrid(walk) {
+  const radius = Number.isFinite(walk.radius) ? walk.radius : WALK_RADIUS;
+  const step = Number.isFinite(walk.step) ? walk.step : WALK_STEP;
+  const bounds = walk.bounds || { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
+  const cols = Math.max(1, Math.ceil((bounds.maxX - bounds.minX) / ROUTE_GRID));
+  const rows = Math.max(1, Math.ceil((bounds.maxZ - bounds.minZ) / ROUTE_GRID));
+  // The clamp the walk solver applies after walls: a centre closer than one
+  // radius to the slab edge is not standable.
+  const minX = bounds.minX + radius;
+  const maxX = bounds.maxX - radius;
+  const minZ = bounds.minZ + radius;
+  const maxZ = bounds.maxZ - radius;
+  const cells = new Map();
+  for (let j = 0; j < rows; j += 1) {
+    for (let i = 0; i < cols; i += 1) {
+      const x = bounds.minX + (i + 0.5) * ROUTE_GRID;
+      const z = bounds.minZ + (j + 0.5) * ROUTE_GRID;
+      if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
+      const y = walkGroundY(walk, x, z);
+      if (y === null) continue;
+      let blocked = false;
+      for (const box of walk.obstacles) {
+        if (!routeBlocksAt(box, y, walk)) continue;
+        // The same inflated AABB walkSlide resolves against: touching the grown
+        // face counts as inside.
+        if (x <= box.min[0] - radius || x >= box.max[0] + radius
+          || z <= box.min[2] - radius || z >= box.max[2] + radius) continue;
+        blocked = true;
+        break;
+      }
+      if (blocked) continue;
+      cells.set(`${i},${j}`, { i, j, x, z, y, index: j * cols + i });
+    }
+  }
+  return { walk, cols, rows, bounds, radius, step, cells };
+}
+
+// The standable cell nearest a plan-view point, ties broken by grid index.
+function routeNearest(grid, x, z) {
+  let best = null;
+  let bestD = Infinity;
+  for (const cell of grid.cells.values()) {
+    const dx = cell.x - x;
+    const dz = cell.z - z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD - 1e-12 || (Math.abs(d - bestD) <= 1e-12 && best && cell.index < best.index)) {
+      bestD = d;
+      best = cell;
+    }
+  }
+  return best;
+}
+
+// Does the straight plan-view line a->b stay clear of every solid that blocks
+// at either endpoint's height? Rects are grown by the walker radius, exactly as
+// the grid blocks a cell, so a clear edge is a line the body could walk.
+function routeEdgeClears(grid, a, b) {
+  const radius = grid.radius;
+  for (const box of grid.walk.obstacles) {
+    if (!routeBlocksAt(box, a.y, grid.walk) && !routeBlocksAt(box, b.y, grid.walk)) continue;
+    const rect = { minX: box.min[0], maxX: box.max[0], minZ: box.min[2], maxZ: box.max[2] };
+    if (!segmentClears(a.x, a.z, b.x, b.z, rect, radius)) return false;
+  }
+  return true;
+}
+
+// Rebuild the cell chain from the came-from map, oldest first.
+function routeChain(came, node) {
+  const path = [];
+  let cursor = node;
+  while (cursor) {
+    path.push(cursor);
+    cursor = came.get(`${cursor.i},${cursor.j}`);
+  }
+  return path.reverse();
+}
+
+// A* from start to the goal cell. With `reach` the search ignores the goal cell
+// and instead returns the reachable cell closest to the target point (ties by
+// index), which is the nearest ground a walker can actually get to when the
+// target itself sits on a surface too high to climb. Returns null when nothing
+// is reachable.
+function routeAStar(grid, start, goal, reach, targetX, targetZ) {
+  const key = (cell) => `${cell.i},${cell.j}`;
+  const goalH = (cell) => Math.hypot(cell.x - goal.x, cell.z - goal.z);
+  const came = new Map();
+  const gScore = new Map([[key(start), 0]]);
+  const closed = new Set();
+  const open = new RouteHeap();
+  const startH = goalH(start);
+  open.push({ cell: start, g: 0, h: startH, f: startH });
+  let best = start;
+  let bestD = Math.hypot(start.x - targetX, start.z - targetZ);
+  while (open.size) {
+    const current = open.pop();
+    const currentKey = key(current.cell);
+    if (closed.has(currentKey)) continue;
+    closed.add(currentKey);
+    if (reach) {
+      const distance = Math.hypot(current.cell.x - targetX, current.cell.z - targetZ);
+      if (distance < bestD - 1e-9
+        || (Math.abs(distance - bestD) <= 1e-9 && current.cell.index < best.index)) {
+        bestD = distance;
+        best = current.cell;
+      }
+    } else if (current.cell.index === goal.index) {
+      return routeChain(came, current.cell);
+    }
+    for (const [di, dj] of ROUTE_DIRS) {
+      const neighbor = grid.cells.get(`${current.cell.i + di},${current.cell.j + dj}`);
+      if (!neighbor) continue;
+      if (!(neighbor.y - current.cell.y <= grid.step + 1e-9)) continue;
+      if (!routeEdgeClears(grid, current.cell, neighbor)) continue;
+      const neighborKey = key(neighbor);
+      if (closed.has(neighborKey)) continue;
+      const diagonal = di !== 0 && dj !== 0;
+      const tentative = current.g + (diagonal ? Math.SQRT2 : 1) * ROUTE_GRID;
+      const known = gScore.get(neighborKey);
+      if (known !== undefined && tentative >= known) continue;
+      gScore.set(neighborKey, tentative);
+      came.set(neighborKey, current.cell);
+      const h = goalH(neighbor);
+      open.push({ cell: neighbor, g: tentative, h, f: tentative + h });
+    }
+  }
+  if (reach) return routeChain(came, best);
+  return null;
+}
+
+// Thin the grid path with greedy line-of-sight: from an anchor, snap to the
+// farthest later cell the anchor can see in a straight line that stays clear.
+// Every emitted segment is checked, so smoothing never cuts a corner the grid
+// would not. Deterministic: farthest first, no randomness.
+function routeSmooth(grid, cells) {
+  if (cells.length <= 2) return cells;
+  const out = [cells[0]];
+  let anchor = 0;
+  while (anchor < cells.length - 1) {
+    let next = anchor + 1;
+    for (let index = cells.length - 1; index > anchor; index -= 1) {
+      if (routeEdgeClears(grid, cells[anchor], cells[index])) {
+        next = index;
+        break;
+      }
+    }
+    out.push(cells[next]);
+    anchor = next;
+  }
+  return out;
+}
+
+// Keep -0 out of the returned points so a capture diff reads a clean zero.
+function routeClean(value) {
+  const rounded = world_round(value);
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
+ * Shortest walkable path from `from` to `to`, both plan-view [x, z] world
+ * points. `walk` is a planWalk table (or the model, which is then planned).
+ * Returns a polyline of [x, z] points snapped onto the walkable deck, or null
+ * when either end or the whole path is unreachable. Pure and deterministic.
+ *
+ * `options.reach` relaxes the goal: when the nearest standable cell to `to` is
+ * itself unreachable (a part sitting on a tier taller than the walk step), the
+ * path ends at the nearest ground the walker can actually reach instead of
+ * returning null. The runtime uses it so a waypoint always lands somewhere the
+ * player can walk to; the default keeps the strict "null when walled off".
+ */
+export function planRoute(walk, model, from, to, options = {}) {
+  if (!Array.isArray(from) || !Array.isArray(to)) return null;
+  const table = routeTable(walk, model);
+  const grid = routeGrid(table);
+  if (!grid.cells.size) return null;
+  const start = routeNearest(grid, Number(from[0]), Number(from[1]));
+  const goal = routeNearest(grid, Number(to[0]), Number(to[1]));
+  if (!start || !goal) return null;
+  const cells = routeAStar(
+    grid, start, goal, Boolean(options && options.reach), Number(to[0]), Number(to[1]),
+  );
+  if (!cells) return null;
+  return routeSmooth(grid, cells).map((cell) => [routeClean(cell.x), routeClean(cell.z)]);
+}
+
+/**
+ * Snap a plan-view [x, z] point to the nearest walkable [x, z], or null when
+ * the deck offers nowhere to stand. The point a double-click on a part should
+ * aim for, before the route is planned to it.
+ */
+export function snapWalkPoint(walk, model, x, z) {
+  const table = routeTable(walk, model);
+  const grid = routeGrid(table);
+  const cell = routeNearest(grid, Number(x), Number(z));
+  if (!cell) return null;
+  return [routeClean(cell.x), routeClean(cell.z)];
 }
 
 export function buildWorld(scene, options = {}) {
@@ -3245,7 +3656,7 @@ export function buildWorld(scene, options = {}) {
     const toNormal = WORLD_PORT_NORMAL[toPort] || [0, 0];
     const lead = [a[0] + fromNormal[0] * tuning.portOffset, a[2] + fromNormal[1] * tuning.portOffset];
     const tail = [b[0] + toNormal[0] * tuning.portOffset, b[2] + toNormal[1] * tuning.portOffset];
-    const plan = planRoute(
+    const plan = planCableRoute(
       lead[0], lead[1], tail[0], tail[1],
       obstaclesExcept(fromPart.id, toPart.id),
       tuning.clearMargin,

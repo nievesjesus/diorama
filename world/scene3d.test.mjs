@@ -10,7 +10,10 @@ import {
   buildWorld,
   finishOf,
   pickSlab,
+  planCableRoute,
   planRoute,
+  snapWalkPoint,
+  ROUTE_GRID,
   routeCandidates,
   routePlan,
   segmentClears,
@@ -46,9 +49,14 @@ import {
   planEnvironment,
   planGate,
   planIntersections,
+  planMinimap,
   planSigns,
   planTermini,
   planWalk,
+  radarFraming,
+  radarProject,
+  RADAR_FP_RADIUS,
+  RADAR_ORBIT_MARGIN,
   repairTermini,
   terminusStub,
   validateNetwork,
@@ -199,10 +207,10 @@ test('segmentClears detects a crossing and ignores a near miss', () => {
   assert.equal(segmentClears(-4, 1.3, 4, 1.3, rect, 0.5), false);
 });
 
-test('planRoute goes straight when clear and takes one elbow when blocked', () => {
+test('planCableRoute goes straight when clear and takes one elbow when blocked', () => {
   const blocker = { id: 'mid', minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
-  assert.deepEqual(planRoute(-6, 0, 6, 0, [], 0.4), [[-6, 0], [6, 0]]);
-  const detour = planRoute(-6, 0, 6, 0, [blocker], 0.4);
+  assert.deepEqual(planCableRoute(-6, 0, 6, 0, [], 0.4), [[-6, 0], [6, 0]]);
+  const detour = planCableRoute(-6, 0, 6, 0, [blocker], 0.4);
   assert.equal(detour.length, 3, 'exactly one waypoint');
   assert.deepEqual(detour[0], [-6, 0]);
   assert.deepEqual(detour[detour.length - 1], [6, 0]);
@@ -1623,4 +1631,258 @@ test('walkBobPhase advances by distance walked, never wall-clock', () => {
   // One full cycle per WALK_BOB_CYCLE units.
   assert.ok(Math.abs(walkBobPhase(0, WALK_BOB_CYCLE) - Math.PI * 2) < 1e-12);
 });
+
+// -------------------------------------------------------------------- radar
+
+test('planMinimap needs a built model', () => {
+  assert.throws(() => planMinimap(null), /requires a built world model/);
+  assert.throws(() => planMinimap({}), /requires a built world model/);
+});
+
+test('planMinimap frames the slab: centred, unit scale on the longer side', () => {
+  const model = buildWorld(example('three-tier-web'));
+  const map = planMinimap(model);
+
+  assert.equal(map.version, 2);
+  assert.equal(map.mode, 'city');
+  assert.ok(map.scale > 0);
+  assert.ok(map.span >= 1);
+  // The longer side spans the unit box, within the six-decimal rounding.
+  assert.ok(Math.abs(map.span * map.scale - 1) < 1e-4);
+  // The slab centre lands on the origin of that fit.
+  assert.ok(Math.abs(map.center[0] - (map.slab.minX + map.slab.maxX) / 2) < 1e-6);
+  assert.ok(Math.abs(map.center[1] - (map.slab.minZ + map.slab.maxZ) / 2) < 1e-6);
+  // bounds and slab describe the same footprint.
+  assert.equal(map.slab.minX, map.bounds.minX);
+  assert.equal(map.slab.maxZ, map.bounds.maxZ);
+});
+
+test('radarFraming is player-centred and forward-up in first person', () => {
+  const map = planMinimap(buildWorld(example('three-tier-web')));
+  const frame = radarFraming(map, { mode: 'fp', x: 4, z: -3, yaw: 0 });
+  assert.equal(frame.mode, 'fp');
+  assert.deepEqual(frame.center, [4, -3]);
+  assert.equal(frame.half, RADAR_FP_RADIUS);
+  // yaw 0 walks toward -z, so screen-up is (0, -1).
+  assert.deepEqual(frame.up, [0, -1]);
+
+  // A point straight ahead lands at the top centre (+y is screen-up).
+  const ahead = radarProject(frame, 4, -3 - RADAR_FP_RADIUS);
+  assert.ok(Math.abs(ahead.x) < 1e-9);
+  assert.ok(Math.abs(ahead.y - 1) < 1e-6);
+  // A point to the walker's right lands on screen-right.
+  const right = radarProject(frame, 4 + RADAR_FP_RADIUS, -3);
+  assert.ok(Math.abs(right.x - 1) < 1e-6);
+  // The walker sits dead centre.
+  assert.deepEqual(radarProject(frame, 4, -3), { x: 0, y: 0 });
+
+  // Turning west (yaw +pi/2) sends the walker's forward to -x.
+  const west = radarFraming(map, { mode: 'fp', x: 0, z: 0, yaw: Math.PI / 2 });
+  assert.ok(Math.abs(west.up[0] + 1) < 1e-6);
+  assert.ok(Math.abs(west.up[1]) < 1e-6);
+});
+
+test('radarFraming fits the whole slab north-up while orbiting', () => {
+  const map = planMinimap(buildWorld(example('three-tier-web')));
+  const frame = radarFraming(map, { mode: 'orbit' });
+  assert.equal(frame.mode, 'orbit');
+  assert.deepEqual(frame.center, map.center);
+  assert.deepEqual(frame.up, [0, -1]);
+  // A square that fits the slab plus slack, and never tighter than the fp window.
+  assert.ok(frame.half >= (map.span / 2) * RADAR_ORBIT_MARGIN - 1e-6);
+  assert.ok(frame.half >= RADAR_FP_RADIUS);
+
+  // Every slab corner projects inside the disc.
+  for (const [x, z] of [
+    [map.slab.minX, map.slab.minZ],
+    [map.slab.maxX, map.slab.minZ],
+    [map.slab.minX, map.slab.maxZ],
+    [map.slab.maxX, map.slab.maxZ],
+  ]) {
+    const p = radarProject(frame, x, z);
+    assert.ok(Math.abs(p.x) <= 1 + 1e-6 && Math.abs(p.y) <= 1 + 1e-6, `corner ${x},${z} inside the disc`);
+  }
+});
+
+test('radarFraming follows the player and radarProject stays pure', () => {
+  const map = planMinimap(buildWorld(example('three-tier-web')));
+  const a = radarFraming(map, { mode: 'fp', x: -12, z: 10, yaw: 0.4 });
+  const b = radarFraming(map, { mode: 'fp', x: 9, z: -8, yaw: 0.4 });
+  // Two poses in different neighbourhoods frame different centres.
+  assert.notDeepEqual(a.center, b.center);
+
+  assert.throws(() => radarFraming(null, { mode: 'fp' }), /requires a minimap plan/);
+  assert.throws(() => radarProject(null, 0, 0), /requires a radar frame/);
+
+  const p = radarProject(a, 3.25, -1.5);
+  assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+  assert.deepEqual(radarProject(a, 3.25, -1.5), p);
+});
+
+test('the radar framing is deterministic and never -0 or NaN', () => {
+  const scene = example('three-tier-web');
+  const map = planMinimap(buildWorld(scene));
+  const a = radarFraming(map, { mode: 'fp', x: 2, z: -4, yaw: 1.1 });
+  const b = radarFraming(planMinimap(buildWorld(scene)), { mode: 'fp', x: 2, z: -4, yaw: 1.1 });
+  assert.equal(JSON.stringify(a), JSON.stringify(b), 'two builds agree to the byte');
+  const walk = (value) => {
+    if (typeof value === 'number') assert.ok(Number.isFinite(value) && !Object.is(value, -0));
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+  };
+  walk(a);
+  walk(radarFraming(map, { mode: 'orbit' }));
+  walk(radarProject(a, 2, -4));
+});
+
+// ------------------------------------------------------------- waypoint router
+
+// A synthetic walk table in the planWalk shape: surfaces highest first, so
+// walkGroundY picks the top plate, and a fixed walker radius.
+function walkTable({ surfaces, obstacles, bounds = { minX: -10, maxX: 10, minZ: -10, maxZ: 10 } }) {
+  return {
+    speed: 3.5,
+    run: 7,
+    radius: 0.35,
+    eye: 1.7,
+    footClear: 0.25,
+    step: 0.7,
+    bounds,
+    surfaces: surfaces.slice().sort((a, b) => b.y - a.y),
+    obstacles,
+  };
+}
+
+function slabSurface(bounds) {
+  return {
+    id: 'slab',
+    y: 0,
+    footprint: { minX: bounds.minX, maxX: bounds.maxX, minZ: bounds.minZ, maxZ: bounds.maxZ },
+  };
+}
+
+const ROUTE_BOUNDS = { minX: -10, maxX: 10, minZ: -10, maxZ: 10 };
+
+test('planRoute walks around a block and never crosses its inflated footprint', () => {
+  const block = { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
+  const walk = walkTable({
+    surfaces: [slabSurface(ROUTE_BOUNDS)],
+    obstacles: [{ id: 'b', min: [-1, 0, -1], max: [1, 4, 1] }],
+  });
+  const route = planRoute(walk, null, [-6, 0], [6, 0]);
+  assert.ok(route && route.length >= 2, 'a detour exists');
+  let length = 0;
+  for (let index = 0; index < route.length - 1; index += 1) {
+    const [ax, az] = route[index];
+    const [bx, bz] = route[index + 1];
+    length += Math.hypot(bx - ax, bz - az);
+    assert.ok(
+      segmentClears(ax, az, bx, bz, block, walk.radius),
+      `segment ${index} clears the inflated block`,
+    );
+  }
+  const straight = Math.hypot(
+    route[route.length - 1][0] - route[0][0],
+    route[route.length - 1][1] - route[0][1],
+  );
+  assert.ok(length > straight + 1e-6, 'longer than the straight line');
+});
+
+test('planRoute threads a gap between two walls', () => {
+  const walk = walkTable({
+    surfaces: [slabSurface(ROUTE_BOUNDS)],
+    obstacles: [
+      { id: 'wA', min: [-10, 0, -1], max: [2, 3, 1] },
+      { id: 'wB', min: [4, 0, -1], max: [10, 3, 1] },
+    ],
+  });
+  const route = planRoute(walk, null, [-5, -5], [-5, 5]);
+  assert.ok(route, 'the gap is passable');
+  assert.ok(Math.max(...route.map((point) => point[0])) >= 2.2, 'the route uses the gap');
+});
+
+test('planRoute returns null when a wall seals the deck', () => {
+  const walk = walkTable({
+    surfaces: [slabSurface(ROUTE_BOUNDS)],
+    obstacles: [{ id: 'wall', min: [-10, 0, -1], max: [10, 3, 1] }],
+  });
+  assert.equal(planRoute(walk, null, [0, -5], [0, 5]), null);
+  // Reach mode stops at the near face instead of crossing or giving up.
+  const near = planRoute(walk, null, [0, -5], [0, 5], { reach: true });
+  assert.ok(near && near.length >= 2, 'reach mode keeps a partial route');
+  assert.ok(near[near.length - 1][1] <= -1 - walk.radius + 1e-6, 'and never crosses the wall');
+});
+
+test('planRoute is deterministic across runs and keeps -0 out', () => {
+  const walk = walkTable({
+    surfaces: [slabSurface(ROUTE_BOUNDS)],
+    obstacles: [{ id: 'b', min: [4, 0, 4], max: [8, 4, 8] }],
+  });
+  const first = planRoute(walk, null, [-6, -6], [6, 6]);
+  const second = planRoute(walk, null, [-6, -6], [6, 6]);
+  assert.deepEqual(first, second);
+  for (const point of first) {
+    assert.ok(!Object.is(point[0], -0) && !Object.is(point[1], -0));
+  }
+});
+
+test('planRoute snaps an endpoint out of an obstacle footprint', () => {
+  const walk = walkTable({
+    surfaces: [slabSurface(ROUTE_BOUNDS)],
+    obstacles: [{ id: 'b', min: [-1, 0, -1], max: [1, 3, 1] }],
+  });
+  // The query starts at the block's centre; the route must start beside it.
+  const route = planRoute(walk, null, [0, 0], [0, 6]);
+  assert.ok(route);
+  const [sx, sz] = route[0];
+  const clear = sx <= -1 - walk.radius + 1e-6 || sx >= 1 + walk.radius - 1e-6
+    || sz <= -1 - walk.radius + 1e-6 || sz >= 1 + walk.radius - 1e-6;
+  assert.ok(clear, 'the snapped start is outside the inflated block');
+  assert.ok(Math.hypot(sx, sz) <= 2.5, 'and stays near the query');
+});
+
+test('snapWalkPoint returns null when nothing is standable', () => {
+  const sealed = walkTable({
+    surfaces: [slabSurface(ROUTE_BOUNDS)],
+    obstacles: [{ id: 'wall', min: [-10, 0, -10], max: [10, 3, 10] }],
+  });
+  assert.equal(snapWalkPoint(sealed, null, 0, 0), null);
+  const open = walkTable({ surfaces: [slabSurface(ROUTE_BOUNDS)], obstacles: [] });
+  const point = snapWalkPoint(open, null, 0.2, -0.2);
+  assert.ok(point && Math.hypot(point[0], point[1]) <= ROUTE_GRID, 'snaps to the near cell');
+});
+
+test('planRoute climbs a low plate but never a tall one', () => {
+  const bounds = { minX: -8, maxX: 8, minZ: -8, maxZ: 8 };
+  const walk = walkTable({
+    bounds,
+    surfaces: [
+      { id: 'high', y: 3, footprint: { minX: -6, maxX: -2, minZ: -6, maxZ: -2 } },
+      { id: 'low', y: 0.5, footprint: { minX: 2, maxX: 6, minZ: 2, maxZ: 6 } },
+      slabSurface(bounds),
+    ],
+    obstacles: [],
+  });
+  assert.ok(planRoute(walk, null, [0, 0], [4, 4]), 'a 0.5-unit plate is a step');
+  assert.equal(planRoute(walk, null, [0, 0], [-4, -4]), null, 'a 3-unit plate is a wall');
+  // Reach mode aims for the foot of the tall plate rather than nothing.
+  const foot = planRoute(walk, null, [0, 0], [-4, -4], { reach: true });
+  assert.ok(foot && foot.length >= 2, 'reach mode finds the plate foot');
+  const end = foot[foot.length - 1];
+  assert.ok(
+    end[0] <= -6 || end[0] >= -2 || end[1] <= -6 || end[1] >= -2,
+    'the endpoint is off the tall plate',
+  );
+});
+
+test('planRoute plans on a shipped example through the model fallback', () => {
+  const model = buildWorld(example('kafka-pipeline'));
+  const walk = planWalk(model);
+  const target = snapWalkPoint(walk, model, model.content.center[0], model.content.center[2]);
+  assert.ok(target, 'the deck centre snaps to a walkable cell');
+  const route = planRoute(null, model, [walk.spawn.x, walk.spawn.z], target);
+  assert.ok(route && route.length >= 1, 'a model-only call plans a route');
+  assert.deepEqual(planRoute(null, model, [walk.spawn.x, walk.spawn.z], target), route);
+});
+
 
