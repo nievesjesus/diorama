@@ -31,8 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Procedural road network with deterministic termini: edge gates, cul-de-sacs, loading bays and driveways, plus a `validateNetwork` layout check for orphaned corridors and unclassified ends.
 - Camera modes: orbit (drag to orbit, scroll to zoom), top-down (`?cam=top`) and first person (`?cam=fp` or `V`), with `?focus=<id>&fill=<n>` to frame one part.
 - `--webgl` build flag on `build.mjs` and `scripts/build-examples.mjs`.
+- Land by default: the world stands on a procedural terrain apron (`?ground=1` seats the plinth on the ground, `?ground=2` buries it flush to the deck) with fog that adapts to the scene size, while `?ground=0` keeps the historic floating slab in the void.
+- Building detail pass: every structure big enough earns a roof (parapets, HVAC units, hatch, skylights, one antenna), a facade (window row, lit door, downpipe, conduit) and weathering streaks.
+- Physical part signs: each label is a post-mounted framed paper board with engraved text, batched into one atlas, that crossfades against the HUD chip by on-screen size.
+- First-person walking: `V` (or the HUD button) toggles the mode, `WASD` walks, `Shift` runs, the mouse looks, with collision, a 0.7-unit step-up, head-bob and a run FOV shift.
+- GTA-style radar: a live top-down render of the slab (`M` toggles, `?map=1|0` pins it), a near-part info line, and a destination GPS — double-click a part to plan an A* route drawn on the radar and as a ground ribbon, with a distance chip.
+- First-person capture aids: `?yaw=`, `?dest=` and `?fx`/`?fz=` place the walker and its look for a frozen shot.
+- Deterministic isometric layout solver: `node scripts/layout.mjs draft.json --out scene.json` turns a draft of parts and links into an audit-clean scene.
 
 ### Changed
 
 - SVG packet sparks and hot trails are now sine-wave based: a smooth traveling wave with a pulsing alpha, no hash jitter.
 - `capture.mjs` supports WebGL pages: SwiftShader GL flags plus a `--budget` (default 10000) so `world.html` paints before the shot.
+- `from-compose` orders services locale-independently, so a generated draft no longer depends on the host's collation.

@@ -29,7 +29,7 @@ Almost every architecture diagram is a box with a label, and it drifts from the 
 
 [![universal-modder (light) - the mod-any-game pipeline](.github/assets/gallery-universal-modder.png)](examples/universal-modder/world.html)
 
-Each example ships two self-contained pages: `index.html`, the SVG figure, where hovering a part traces its links, and `world.html`, the same scene as a three.js WebGL world you can drag to orbit, scroll to zoom, double-click to focus a part, and press `V` to walk in first person with `WASD` (`Shift` runs). Both freeze a frame with `?t=<seconds>`; the world adds `?cam=orbit|top|fp`, `?env=warehouse|city`, `?focus=<id>` and `?debug=1`, and the SVG page takes `?frame=1` for a framed embed. Everything is inlined — three.js r169 is vendored into `world.html` — so each page is standalone and offline.
+Each example ships two self-contained pages: `index.html`, the SVG figure, where hovering a part traces its links, and `world.html`, the same scene as a three.js WebGL world. The world now stands on procedural land by default — `?ground=0` restores the original floating slab in the void and `?ground=1` seats the plinth on the ground — with fog that adapts to the scene size. Drag to orbit, scroll to zoom, double-click to focus a part, or press `V` (or the HUD button) to walk in first person: `WASD` moves, `Shift` runs, the mouse looks around, and a GTA-style radar sits bottom-right (`M` toggles it; double-click a part to set a destination and an A* route is drawn on the radar with a matching ground ribbon, a distance chip and a near-part info line). Both pages freeze a frame with `?t=<seconds>`; the world adds `?cam=orbit|top|fp`, `?env=warehouse|city`, `?focus=<id>`, `?ground=0|1|2`, `?map=1|0` and `?debug=1`, plus `?yaw=`, `?dest=` and `?fx`/`?fz=` capture aids, and the SVG page takes `?frame=1` for a framed embed. Everything is inlined — three.js r169 is vendored into `world.html` — so each page is standalone and offline.
 
 ## Install
 
@@ -106,22 +106,24 @@ diorama/
 │   ├── iso.css               the world chrome and HUD, both themes, reduced motion
 │   ├── scene.mjs             scene spec v1 parsing and normalization
 │   ├── motion.mjs            flow animation and seek
+│   ├── layout.mjs            deterministic isometric layout solver
 │   └── audit.mjs             the geometry audit
 ├── world/
-│   ├── scene3d.mjs           environments, road network and the three.js world model
-│   ├── runtime.mjs           WebGL renderer, orbit and first-person camera, interaction
+│   ├── scene3d.mjs           terrain, environments, roads, walk plan and the three.js world model
+│   ├── runtime.mjs           WebGL renderer, orbit and first-person camera, radar/GPS, interaction
 │   ├── bundle.mjs            deterministic ES-module concatenator for world.html
 │   ├── world.css             the WebGL page's own layer over the shared HUD
 │   └── vendor/               three.js r169, vendored (no npm install)
 ├── scripts/
 │   ├── build-examples.mjs    rebuild every example
 │   ├── capture.mjs           headless screenshots with zoom and time seek
+│   ├── layout.mjs            CLI wrapper for the layout solver
 │   └── from-compose.mjs      docker-compose to a first-draft scene spec
 ├── references/
 │   ├── craft.md              how to compose a figure worth shipping
 │   ├── verify.md             what to check before publishing
 │   └── compose.md            drafting a scene from docker-compose
-├── examples/                 three scenes, each scene.json + index.html (SVG) + world.html (WebGL) + index.svg
+├── examples/                 five scenes, each scene.json + index.html (SVG) + world.html (WebGL) + index.svg
 ├── evals/evals.json          test prompts and what a good answer contains
 ├── .github/
 │   ├── workflows/ci.yml      tests, build and audit on every change

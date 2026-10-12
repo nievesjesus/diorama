@@ -6,9 +6,10 @@ description: Turn a software system into a detailed, interactive isometric figur
 # Diorama
 
 Turn a software system into a living isometric figure: one self-contained HTML page that
-renders as a full-bleed animated world — a floating slab in an atmospheric void under a glass
-HUD — draws the real stack as SVG solids, threads animated flows through it, and passes a
-mechanical geometry audit before it ships.
+renders as a full-bleed animated world — a plinth on procedural land under a glass HUD, with
+`?ground=0` restoring the historic floating slab in an atmospheric void — draws the real stack
+as SVG solids, threads animated flows through it, and passes a mechanical geometry audit
+before it ships.
 
 ## Workflow
 
@@ -55,15 +56,17 @@ mechanical geometry audit before it ships.
    `TUBE_THROUGH_SOLID`, `DEPTH_INVERSION` (details in `references/verify.md`).
 5. **Verify visually.** Capture the page with
    `node scripts/capture.mjs <page.html> preview.png --t 2.5 --w 1280 --h 960` and **read the
-   PNG like a critic**: the slab should float with atmosphere on all four sides — check overlaps,
-   floating ends, unreadable labels, busy flows, crowding. Fix and repeat. A figure ships only
-   after you have looked at it.
+   PNG like a critic**: the plinth should sit convincingly on its land (or float in the void
+   under `?ground=0`) with atmosphere on all four sides — check overlaps, floating ends,
+   unreadable labels, busy flows, crowding. Fix and repeat. A figure ships only after you have
+   looked at it.
 6. **Deliver.** GitHub and READMEs cannot render the standalone HTML, so the default artifact is a
    captured PNG: run the step-5 `scripts/capture.mjs` at the destination size and ship that image,
    with the built HTML as the interactive extra and a link next to it (hover traces links;
    `?t=<seconds>` freezes a frame, `?frame=1` gives a framed embed). The build still emits the
    standalone HTML — `--webgl` adds `world.html`, the same scene as a three.js WebGL world beside
-   the SVG `index.html`, and `--svg out.svg` writes a lone static SVG — and produce both themes
+   the SVG `index.html` (land by default, `?ground=0` for the void, with first-person walking and
+   a radar/GPS), and `--svg out.svg` writes a lone static SVG — and produce both themes
    when asked.
 
 ## Quickstart from docker-compose
@@ -109,5 +112,6 @@ node scripts/build-examples.mjs [--svg] [--webgl] [--audit] [--theme light|dark]
 
 ## Gallery
 
-`examples/` holds three worked scenes — a light three-tier web stack, a dark Kafka pipeline and
-a light Kubernetes CI stack — each with its `scene.json`, built page and screenshot.
+`examples/` holds five worked scenes — a light three-tier web stack, a dark Kafka pipeline, a
+light Kubernetes CI stack, a dark reverse-engineering provider set and a light modding pipeline —
+each with its `scene.json`, built page and screenshot.
