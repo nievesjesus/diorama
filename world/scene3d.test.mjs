@@ -51,6 +51,8 @@ import {
   planIntersections,
   planMinimap,
   planSigns,
+  planTerrain,
+  planTerrainRoads,
   planTermini,
   planWalk,
   radarFraming,
@@ -58,7 +60,9 @@ import {
   RADAR_FP_RADIUS,
   RADAR_ORBIT_MARGIN,
   repairTermini,
+  resolveGround,
   terminusStub,
+  terrainHeight,
   validateNetwork,
   walkGroundY,
   walkStep,
@@ -74,6 +78,8 @@ import {
   WALK_RUN_FOV,
   WALK_SPEED,
   WALK_STEP,
+  WORLD_GROUND_DEFAULT,
+  WORLD_TERRAIN_TUNING,
 } from './scene3d.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -807,6 +813,150 @@ test('buildWorld reports what the environment added', () => {
   assert.equal(web.stats.env, 'city');
   assert.ok(web.stats.roads > 0);
   assert.ok(web.stats.lamps > 0);
+});
+
+// ------------------------------------------------------------ terrain apron
+
+test('planTerrain only plans the two land variants and leaves the void alone', () => {
+  const slab = buildWorld(example('kafka-pipeline')).slab;
+  assert.equal(planTerrain(slab, {}), null);
+  assert.equal(planTerrain(slab, { variant: 0 }), null);
+  assert.equal(planTerrain(slab, { variant: 3 }), null);
+  assert.equal(planTerrain(slab, { variant: 'x' }), null);
+  assert.equal(buildWorld(example('kafka-pipeline')).terrain, null);
+  assert.equal(buildWorld(example('kafka-pipeline')).stats.terrain, 0);
+});
+
+test('the apron reaches well past the slab and floors at the minimum extent', () => {
+  for (const name of ['kafka-pipeline', 'three-tier-web', 'k8s-ci']) {
+    const world = buildWorld(example(name), { ground: 1 });
+    const plan = world.terrain;
+    const fp = world.slab.footprint;
+    const span = Math.max(fp.maxX - fp.minX, fp.maxZ - fp.minZ);
+    assert.ok(plan.outer >= WORLD_TERRAIN_TUNING.outerMin, `${name}: too small`);
+    assert.ok(plan.outer >= span * WORLD_TERRAIN_TUNING.outerFactor, `${name}: not span-scaled`);
+    assert.ok(plan.outer >= span, `${name}: smaller than the slab`);
+    assert.ok(plan.bounds.maxX - plan.bounds.minX === plan.outer);
+    assert.ok(plan.bounds.maxZ - plan.bounds.minZ === plan.outer);
+  }
+});
+
+test('the land level follows the variant: plinth base for 1, flush to the deck for 2', () => {
+  const slab = buildWorld(example('kafka-pipeline')).slab;
+  assert.equal(planTerrain(slab, { variant: 1 }).base, -slab.thickness);
+  // Variant 2 is the default land: the apron is level with the slab top, so the
+  // edge reads flush with no lip and no side band.
+  assert.equal(planTerrain(slab, { variant: 2 }).base, 0);
+});
+
+test('the land is a pure function of the slab and of its own noise', () => {
+  const world = buildWorld(example('three-tier-web'), { ground: 2 });
+  const again = buildWorld(example('three-tier-web'), { ground: 2 });
+  assert.equal(JSON.stringify(world.terrain), JSON.stringify(again.terrain));
+  assert.equal(JSON.stringify(world), JSON.stringify(again));
+  const plan = world.terrain;
+  for (const [x, z] of [[20, 4], [-33, 61], [120, -90], [0, 0]]) {
+    assert.equal(terrainHeight(plan, x, z), terrainHeight(plan, x, z));
+  }
+});
+
+test('the lip is dead flat around the slab so the apron meets it with no seam', () => {
+  const world = buildWorld(example('kafka-pipeline'), { ground: 1 });
+  const plan = world.terrain;
+  const fp = world.slab.footprint;
+  const base = plan.base;
+  // Inside the footprint and through the flat margin the height is exactly the
+  // land level, whatever the noise would otherwise do there.
+  const points = [
+    [(fp.minX + fp.maxX) / 2, (fp.minZ + fp.maxZ) / 2],
+    [fp.minX, fp.minZ],
+    [fp.maxX, fp.maxZ],
+    [fp.minX - plan.margin, (fp.minZ + fp.maxZ) / 2],
+    [fp.maxX + plan.margin, (fp.minZ + fp.maxZ) / 2],
+    [(fp.minX + fp.maxX) / 2, fp.minZ - plan.margin],
+  ];
+  for (const [x, z] of points) assert.equal(terrainHeight(plan, x, z), base);
+});
+
+test('the noise stays inside the amplitude band and actually undulates', () => {
+  const world = buildWorld(example('k8s-ci'), { ground: 1 });
+  const plan = world.terrain;
+  let min = Infinity;
+  let max = -Infinity;
+  for (let ix = 0; ix <= 40; ix += 1) {
+    for (let iz = 0; iz <= 40; iz += 1) {
+      const x = plan.bounds.minX + (plan.bounds.maxX - plan.bounds.minX) * (ix / 40);
+      const z = plan.bounds.minZ + (plan.bounds.maxZ - plan.bounds.minZ) * (iz / 40);
+      const y = terrainHeight(plan, x, z);
+      assert.ok(y >= plan.base - plan.amplitude - 1e-6);
+      assert.ok(y <= plan.base + plan.amplitude + 1e-6);
+      min = Math.min(min, y);
+      max = Math.max(max, y);
+    }
+  }
+  assert.ok(max - min > 0.2, 'the land is a flat sheet, not terrain');
+});
+
+test('buildWorld reports the land variant it built', () => {
+  assert.equal(buildWorld(example('kafka-pipeline'), { ground: 1 }).stats.terrain, 1);
+  assert.equal(buildWorld(example('kafka-pipeline'), { ground: 2 }).stats.terrain, 2);
+});
+
+test('resolveGround makes the land the default and keeps ?ground=0 as the void', () => {
+  assert.equal(WORLD_GROUND_DEFAULT, 2);
+  // Absent, blank or anything unknown lands on the default deck-level terrain.
+  for (const raw of [null, undefined, '', ' ', '3', '-1', 'x', 'nan', 'true']) {
+    assert.equal(resolveGround(raw), WORLD_GROUND_DEFAULT, `raw=${JSON.stringify(raw)}`);
+  }
+  assert.equal(resolveGround('0'), 0);
+  assert.equal(resolveGround('1'), 1);
+  assert.equal(resolveGround('2'), 2);
+  assert.equal(resolveGround(0), 0);
+  assert.equal(resolveGround(1), 1);
+  assert.equal(resolveGround(2), 2);
+});
+
+test('the road run-outs extend each edge gate 25-40u into the land', () => {
+  const world = buildWorld(example('three-tier-web'), { ground: 2 });
+  const gates = world.env.city.gates;
+  const strips = world.terrainRoads;
+  assert.ok(gates.length > 0, 'three-tier-web has edge gates to continue');
+  assert.equal(strips.length, gates.length);
+  for (let index = 0; index < strips.length; index += 1) {
+    const strip = strips[index];
+    const gate = gates[index];
+    assert.equal(strip.x, gate.x);
+    assert.equal(strip.z, gate.z);
+    assert.equal(strip.width, gate.width);
+    assert.equal(strip.along, gate.along);
+    assert.deepEqual(strip.dir, [gate.dir[0], gate.dir[1]]);
+    assert.ok(strip.length >= 25 && strip.length <= 40, `length ${strip.length}`);
+    // The strip runs outward from the gate, not back across the slab.
+    const endX = strip.x + strip.dir[0] * strip.length;
+    const endZ = strip.z + strip.dir[1] * strip.length;
+    const fp = world.slab.footprint;
+    const outside = endX < fp.minX - 1 || endX > fp.maxX + 1 || endZ < fp.minZ - 1 || endZ > fp.maxZ + 1;
+    assert.ok(outside, 'the run-out ends clear of the slab');
+  }
+  assert.equal(world.stats.terrainRoads, strips.length);
+});
+
+test('the void and the streetless warehouse add no road run-outs', () => {
+  const voidWorld = buildWorld(example('three-tier-web'));
+  assert.deepEqual(voidWorld.terrainRoads, []);
+  assert.equal(voidWorld.stats.terrainRoads, 0);
+  // kafka is a warehouse: the land has no perimeter roads to continue.
+  const warehouse = buildWorld(example('kafka-pipeline'), { ground: 2 });
+  assert.deepEqual(warehouse.terrainRoads, []);
+  assert.equal(warehouse.stats.terrainRoads, 0);
+});
+
+test('planTerrainRoads is a pure function of the land and the city plan', () => {
+  const world = buildWorld(example('three-tier-web'), { ground: 2 });
+  assert.deepEqual(planTerrainRoads(world.terrain, world.env.city), world.terrainRoads);
+  assert.deepEqual(planTerrainRoads(null, world.env.city), []);
+  assert.deepEqual(planTerrainRoads(world.terrain, null), []);
+  assert.deepEqual(planTerrainRoads(world.terrain, { gates: [] }), []);
 });
 
 // ------------------------------------------------- road network: termini v2

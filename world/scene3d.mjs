@@ -2467,6 +2467,184 @@ export function planEnvironment(requested, footprint, parts, tuning = WORLD_ENV_
   return { mode, requested, metrics, ground, city, warehouse, roadRects, network, tuning };
 }
 
+// ----------------------------------------------------------- terrain apron
+//
+// An optional ground/terrain apron, so the diorama can read as land instead of
+// a floating slab. This is a pure planner: it reports the land's extent, its
+// level and the parameters of its noise, and the runtime builds one mesh from
+// them. Two variants: 1 sits the plinth on the land (the apron is at the slab
+// base and the strata sides become its base), 2 buries it flush to the deck
+// (the apron is level with the slab top, so the edge has no lip or side band).
+// Variant 0 is the unchanged void.
+//
+// The land is a pure function of the slab: FNV-1a tokens and integer-hash value
+// noise only, no Math.random, so a `?t=` capture of the land is byte-identical.
+export const WORLD_TERRAIN_TUNING = {
+  grid: 96,             // mesh segments per axis
+  outerMin: 400,        // the apron is never smaller than this across
+  outerFactor: 6,       // ... nor smaller than this many slab spans
+  margin: 2.4,          // world units of dead-flat land around the slab lip
+  fade: 12,             // units over which the noise ramps back in
+  amplitude: 1.7,       // peak displacement, world units
+  baseFrequency: 0.011, // noise cells per world unit (wavelength ~90u)
+  octaves: 2,
+  seed: 0x9e3779b9,     // fixed: the land depends only on the slab
+  // The road run-out: a faded asphalt strip continuing each edge road out into
+  // the land, so the apron does not read as walled off at the gates.
+  roadLength: 32,       // run-out past the gate, world units
+  roadSegments: 8,      // ribbon segments along the run-out (follows the land)
+  roadFade: 0.55,       // fraction of the run-out the strip stays solid
+};
+
+// Which variant an absent/blank/unknown `?ground=` resolves to. The land is the
+// default look now; `?ground=0` still asks for the historic void.
+export const WORLD_GROUND_DEFAULT = 2;
+
+/**
+ * Resolve a `?ground` query value to a variant. Absent, blank or anything that
+ * is not exactly 0, 1 or 2 falls back to the default land; 0 stays the void.
+ */
+export function resolveGround(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return WORLD_GROUND_DEFAULT;
+  const value = Number(raw);
+  return value === 0 || value === 1 || value === 2 ? value : WORLD_GROUND_DEFAULT;
+}
+
+const WORLD_TERRAIN_VARIANTS = [1, 2];
+
+export function planTerrain(slab, options = {}) {
+  const variant = Number(options.variant);
+  if (!WORLD_TERRAIN_VARIANTS.includes(variant)) return null;
+  if (!slab || !slab.footprint) throw new Error('planTerrain requires a built slab');
+  const tuning = { ...WORLD_TERRAIN_TUNING, ...(options.tuning || {}) };
+  const footprint = slab.footprint;
+  const spanX = footprint.maxX - footprint.minX;
+  const spanZ = footprint.maxZ - footprint.minZ;
+  const span = Math.max(spanX, spanZ, 1e-3);
+  const outer = world_round(Math.max(tuning.outerMin, span * tuning.outerFactor));
+  const half = world_round(outer / 2);
+  // Variant 2 puts the land flush with the deck (the slab top is y = 0), so the
+  // transition is a clean material line with no lip and no side band to read as
+  // a void stripe. Variant 1 keeps the plinth standing on the land.
+  const base = variant === 2 ? 0 : -Math.abs(slab.thickness);
+  const cx = world_round((footprint.minX + footprint.maxX) / 2);
+  const cz = world_round((footprint.minZ + footprint.maxZ) / 2);
+  return {
+    variant,
+    base,
+    outer,
+    half,
+    center: [cx, cz],
+    grid: tuning.grid,
+    footprint: {
+      minX: footprint.minX,
+      maxX: footprint.maxX,
+      minZ: footprint.minZ,
+      maxZ: footprint.maxZ,
+    },
+    margin: tuning.margin,
+    fade: tuning.fade,
+    amplitude: tuning.amplitude,
+    baseFrequency: tuning.baseFrequency,
+    octaves: tuning.octaves,
+    seed: tuning.seed,
+    bounds: {
+      minX: world_round(cx - half),
+      maxX: world_round(cx + half),
+      minZ: world_round(cz - half),
+      maxZ: world_round(cz + half),
+    },
+  };
+}
+
+function world_terrainHash(ix, iz, seed) {
+  let hash = (seed ^ Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1)) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2545f491) >>> 0;
+  hash = (hash ^ (hash >>> 13)) >>> 0;
+  return hash / 4294967296;
+}
+
+// Smoothed value noise in [-1, 1] over a couple of octaves. Low frequency and
+// bounded, so the land reads as gentle relief rather than a crumpled sheet.
+function world_terrainValue(plan, x, z) {
+  let frequency = plan.baseFrequency;
+  let amplitude = 1;
+  let sum = 0;
+  let norm = 0;
+  for (let octave = 0; octave < plan.octaves; octave += 1) {
+    const seed = plan.seed + octave * 1013;
+    const gx = x * frequency;
+    const gz = z * frequency;
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const fx = gx - ix;
+    const fz = gz - iz;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sz = fz * fz * (3 - 2 * fz);
+    const n00 = world_terrainHash(ix, iz, seed);
+    const n10 = world_terrainHash(ix + 1, iz, seed);
+    const n01 = world_terrainHash(ix, iz + 1, seed);
+    const n11 = world_terrainHash(ix + 1, iz + 1, seed);
+    const nx0 = n00 + (n10 - n00) * sx;
+    const nx1 = n01 + (n11 - n01) * sx;
+    sum += ((nx0 + (nx1 - nx0) * sz) * 2 - 1) * amplitude;
+    norm += amplitude;
+    amplitude *= 0.5;
+    frequency *= 2;
+  }
+  return norm > 0 ? (sum * (1 / norm)) : 0;
+}
+
+/**
+ * Height of the land at a world (x, z). Dead flat at `base` inside the slab
+ * footprint and for `margin` around it, then the noise ramps in over `fade`,
+ * so the lip meets the ground with no seam whatever the slab footprint is.
+ */
+export function terrainHeight(plan, x, z) {
+  if (!plan || plan.variant === 0) return 0;
+  const fp = plan.footprint;
+  const dx = x < fp.minX ? fp.minX - x : x > fp.maxX ? x - fp.maxX : 0;
+  const dz = z < fp.minZ ? fp.minZ - z : z > fp.maxZ ? z - fp.maxZ : 0;
+  const distance = Math.hypot(dx, dz);
+  if (distance <= plan.margin) return plan.base;
+  if (distance >= plan.margin + plan.fade) {
+    return world_round(plan.base + world_terrainValue(plan, x, z) * plan.amplitude);
+  }
+  const t = (distance - plan.margin) / plan.fade;
+  const ramp = t * t * (3 - 2 * t);
+  return world_round(plan.base + world_terrainValue(plan, x, z) * plan.amplitude * ramp);
+}
+
+/**
+ * One faded asphalt run-out per edge gate, continuing the perimeter road into
+ * the land so the apron does not read as walled off. Pure: the strip is the
+ * gate the city plan already placed, extended outward along its own direction
+ * for a length fixed by its index. The runtime turns the whole list into one
+ * ribbon mesh that follows the land, so the cost is a single draw call.
+ */
+export function planTerrainRoads(terrain, city, tuning = WORLD_TERRAIN_TUNING) {
+  if (!terrain || terrain.variant === 0) return [];
+  const gates = city && Array.isArray(city.gates) ? city.gates : [];
+  const strips = [];
+  for (let index = 0; index < gates.length; index += 1) {
+    const gate = gates[index];
+    const dir = gate.dir;
+    if (!dir || (dir[0] === 0 && dir[1] === 0)) continue;
+    // A deterministic wobble in the run-out keeps every gate from ending on the
+    // same line, without leaving the 25-40u band the look was approved at.
+    const length = tuning.roadLength + ((index % 3) - 1) * 4;
+    strips.push({
+      x: gate.x,
+      z: gate.z,
+      dir: [dir[0], dir[1]],
+      width: gate.width,
+      along: gate.along,
+      length,
+    });
+  }
+  return strips;
+}
+
 // ---------------------------------------------------------- building detail
 //
 // The environment plan dresses the ground; the parts are the machines standing
@@ -3577,6 +3755,10 @@ export function buildWorld(scene, options = {}) {
     sourceId: slabPart ? slabPart.id : null,
   };
 
+  // The optional land around the plinth. Variant 0 (or absent) is the void the
+  // diorama has always floated in, so the default model is byte-identical.
+  const terrain = planTerrain(slab, { variant: options.ground });
+
   // A physical sign per labelled part, at a deterministic footprint corner that
   // clears its neighbours and stands on the slab. Planned from the normalised
   // parts and the slab footprint, so it stays pure and needs no scene access.
@@ -3608,6 +3790,10 @@ export function buildWorld(scene, options = {}) {
     { ...WORLD_ENV_TUNING, ...(options.envTuning || {}) },
     `${typeof scene.title === 'string' ? scene.title : ''}|${parts.length}`,
   );
+
+  // The land's road runs: one strip per edge gate, continuing the perimeter
+  // asphalt out over the apron. Pure, and empty in the void or without streets.
+  const terrainRoads = planTerrainRoads(terrain, env.city);
 
   // A pole may not stand inside a part, and labels float above parts, so the
   // same footprints (grown a little) keep masts clear of both.
@@ -3830,6 +4016,8 @@ export function buildWorld(scene, options = {}) {
     origin: world_point([cx, deck, cz]),
     cableHeight,
     slab,
+    terrain,
+    terrainRoads,
     env,
     buildings,
     parts,
@@ -3868,6 +4056,8 @@ export function buildWorld(scene, options = {}) {
       termini: env.network.counts,
       orphans: env.network.orphans.length,
       network: env.network.ok ? 'ok' : 'orphaned',
+      terrain: terrain ? terrain.variant : 0,
+      terrainRoads: terrainRoads.length,
     },
     tuning,
   };
